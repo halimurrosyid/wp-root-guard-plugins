@@ -1,0 +1,230 @@
+/**
+ * WP Root Guard Admin Stylesheet
+ *
+ * Memberikan tampilan modern dan premium untuk halaman pengaturan WP Root Guard.
+ */
+
+.wp-root-guard-wrap {
+	margin: 20px 20px 0 0;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+/* Grid Layout */
+.rg-dashboard-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+	margin-bottom: 20px;
+	margin-top: 15px;
+}
+
+@media (max-width: 782px) {
+	.rg-dashboard-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Cards */
+.rg-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+	overflow: hidden;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rg-card:hover {
+	box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+}
+
+.rg-card-header {
+	background: #f8fafc;
+	padding: 15px 20px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.rg-card-header h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: #1e293b;
+}
+
+.rg-card-body {
+	padding: 20px;
+}
+
+.text-center {
+	text-align: center;
+}
+
+/* Status Card Colors */
+.rg-status-card {
+	border-top: 5px solid #cbd5e1;
+}
+
+.rg-status-safe {
+	border-top: 5px solid #10b981; /* Emeral Green */
+	background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100px);
+}
+
+.rg-status-threat {
+	border-top: 5px solid #ef4444; /* Vivid Red */
+	background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100px);
+}
+
+.rg-status-badge {
+	padding: 10px 0;
+}
+
+.rg-icon-large {
+	display: block;
+	font-size: 48px;
+	margin-bottom: 10px;
+	animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+	0% { transform: scale(1); }
+	50% { transform: scale(1.05); }
+	100% { transform: scale(1); }
+}
+
+.rg-status-text {
+	display: block;
+	font-size: 28px;
+	font-weight: 800;
+	letter-spacing: 1px;
+	margin-bottom: 8px;
+}
+
+.text-safe {
+	color: #047857;
+}
+
+.text-danger {
+	color: #b91c1c;
+}
+
+.rg-status-desc {
+	color: #64748b;
+	font-size: 14px;
+	margin: 0;
+}
+
+/* Summary Table */
+.rg-summary-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.rg-summary-table tr {
+	border-bottom: 1px solid #f1f5f9;
+}
+
+.rg-summary-table tr:last-child {
+	border-bottom: none;
+}
+
+.rg-summary-table th {
+	text-align: left;
+	padding: 12px 0;
+	font-weight: 500;
+	color: #64748b;
+	font-size: 14px;
+}
+
+.rg-summary-table td {
+	text-align: right;
+	padding: 12px 0;
+	color: #0f172a;
+	font-size: 14px;
+}
+
+/* Button & Action Bar Styling */
+.rg-actions-bar {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 25px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.button-link-delete {
+	background: none;
+	border: none;
+	color: #ef4444;
+	text-decoration: underline;
+	cursor: pointer;
+	padding: 6px 12px;
+	font-size: 13px;
+	transition: color 0.15s ease;
+}
+
+.button-link-delete:hover {
+	color: #b91c1c;
+}
+
+/* Styled Table for listings */
+.rg-table-card {
+	margin-bottom: 25px;
+}
+
+.rg-styled-table {
+	box-shadow: none !important;
+	border: none !important;
+}
+
+.rg-styled-table th {
+	font-weight: 600 !important;
+	color: #475569 !important;
+	background: #f8fafc !important;
+	border-bottom: 2px solid #cbd5e1 !important;
+}
+
+.rg-styled-table td {
+	padding: 12px 10px !important;
+	vertical-align: middle !important;
+}
+
+/* Badges */
+.rg-badge {
+	display: inline-block;
+	padding: 4px 8px;
+	border-radius: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.badge-danger {
+	background-color: #fee2e2;
+	color: #991b1b;
+}
+
+.badge-safe {
+	background-color: #d1fae5;
+	color: #065f46;
+}
+
+/* Empty States */
+.rg-empty-message {
+	text-align: center;
+	padding: 30px 15px;
+	color: #64748b;
+}
+
+.rg-empty-message p {
+	margin: 0;
+	font-size: 14px;
+}
+
+code {
+	background: #f1f5f9;
+	color: #334155;
+	padding: 3px 6px;
+	border-radius: 4px;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 13px;
+}

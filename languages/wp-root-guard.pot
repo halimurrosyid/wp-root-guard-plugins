@@ -1,0 +1,63 @@
+# Copyright (C) 2026 Antigravity
+# This file is distributed under the GPL v2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: WP Root Guard 1.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/wp-root-guard\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-07-13T09:22:00+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.8.1\n"
+"X-Domain: wp-root-guard\n"
+
+#. Plugin Name of the plugin
+msgid "WP Root Guard"
+msgstr ""
+
+#. Description of the plugin
+msgid "Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot."
+msgstr ""
+
+#: wp-root-guard.php:61
+msgid "Plugin ini memerlukan PHP versi 8.1 atau lebih tinggi."
+msgstr ""
+
+#: includes/class-scanner.php:40
+msgid "Tidak diketahui"
+msgstr ""
+
+#: includes/class-scanner.php:51
+msgid "Unknown Folder"
+msgstr ""
+
+#: includes/class-scanner.php:57
+msgid "Folder asing terdeteksi"
+msgstr ""
+
+#: includes/class-scanner.php:59
+msgid "Unknown"
+msgstr ""
+
+#: includes/class-scanner.php:79
+msgid "Pemindaian selesai"
+msgstr ""
+
+#: includes/class-scanner.php:81
+msgid "Safe"
+msgstr ""
+
+#: includes/class-scanner.php:85
+msgid "Pemindaian selesai dengan temuan ancaman"
+msgstr ""
+
+#: includes/class-scanner.php:86
+msgid "%d folder asing"
+msgstr ""
+
+#: includes/class-scanner.php:87
+msgid "Threat Detected"
+msgstr ""
