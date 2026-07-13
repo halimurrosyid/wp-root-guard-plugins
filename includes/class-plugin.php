@@ -42,10 +42,18 @@ class Plugin {
 	private $dashboard;
 
 	/**
+	 * Instansi GitHub Updater.
+	 *
+	 * @var Updater
+	 */
+	private $updater;
+
+	/**
 	 * Konstruktor. Menginisialisasi komponen utama.
 	 */
 	public function __construct() {
-		$this->cron = new Cron();
+		$this->cron    = new Cron();
+		$this->updater = new Updater( WP_ROOT_GUARD_FILE );
 
 		if ( is_admin() ) {
 			$this->admin     = new Admin\Admin();
@@ -60,6 +68,9 @@ class Plugin {
 		// Pemuatan translasi.
 		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
 
+		// Inisialisasi GitHub Updater.
+		$this->updater->init();
+
 		// Inisialisasi Cron.
 		$this->cron->init();
 
@@ -67,9 +78,6 @@ class Plugin {
 		if ( is_admin() ) {
 			$this->admin->init();
 			$this->dashboard->init();
-
-			$updater = new Updater( WP_ROOT_GUARD_FILE, 'halimurrosyid', 'wp-root-guard-plugins' );
-			$updater->init();
 		}
 	}
 

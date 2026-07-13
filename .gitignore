@@ -1,7 +1,0 @@
-# WordPress Plugin gitignore
-.DS_Store
-Thumbs.db
-*.log
-*.zip
-.idea/
-.vscode/

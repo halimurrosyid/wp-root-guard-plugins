@@ -1,6 +1,6 @@
 <?php
 /**
- * Update Checker dari repositori GitHub untuk WordPress.
+ * Mengelola pengecekan dan instalasi pembaruan plugin otomatis dari GitHub.
  *
  * @package WPRootGuard
  */
@@ -15,34 +15,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Class Updater
  *
- * Mengelola pengecekan rilis versi baru di GitHub dan
- * mengintegrasikannya dengan sistem pembaruan WordPress.
+ * Menghubungkan sistem pembaruan WordPress dengan GitHub API untuk mengambil
+ * rilis terbaru dari repositori secara otomatis.
  */
 class Updater {
 
 	/**
-	 * Versi plugin saat ini.
+	 * Path lengkap file utama plugin.
 	 *
 	 * @var string
 	 */
-	private $current_version;
+	private $file;
 
 	/**
-	 * Nama file utama plugin (wp-root-guard.php).
+	 * Slug plugin (folder-nama/file-utama.php).
 	 *
 	 * @var string
 	 */
-	private $plugin_file;
+	private $plugin_slug;
 
 	/**
-	 * Path relatif plugin (wp-root-guard/wp-root-guard.php).
-	 *
-	 * @var string
-	 */
-	private $slug;
-
-	/**
-	 * Username pemilik repositori GitHub.
+	 * Nama pengguna pemilik repositori GitHub.
 	 *
 	 * @var string
 	 */
@@ -53,169 +46,151 @@ class Updater {
 	 *
 	 * @var string
 	 */
-	private $repo;
+	private $repository;
 
 	/**
-	 * Cache respons API GitHub untuk efisiensi per request.
+	 * URL API GitHub untuk mendapatkan rilis terbaru.
 	 *
-	 * @var object
+	 * @var string
 	 */
-	private $github_response;
+	private $github_api_url;
 
 	/**
-	 * Konstruktor.
+	 * Konstruktor Updater.
 	 *
-	 * @param string $plugin_file Nama file utama plugin.
-	 * @param string $username Username GitHub.
-	 * @param string $repo Nama repositori GitHub.
+	 * @param string $file Path lengkap file utama plugin.
 	 */
-	public function __construct( $plugin_file, $username, $repo ) {
-		$this->plugin_file = $plugin_file;
-		$this->username    = $username;
-		$this->repo        = $repo;
-		$this->slug        = plugin_basename( $plugin_file );
-
-		// Mengambil versi dari metadata plugin
-		if ( ! function_exists( 'get_plugin_data' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/plugin.php';
-		}
-		$plugin_data           = get_plugin_data( $plugin_file );
-		$this->current_version = $plugin_data['Version'];
+	public function __construct( $file ) {
+		$this->file           = $file;
+		$this->plugin_slug    = plugin_basename( $file ); // e.g. 'wp-root-guard/wp-root-guard.php' atau 'WP Root Guard/wp-root-guard.php'
+		$this->username       = 'halimurrosyid';
+		$this->repository     = 'wp-root-guard-plugins';
+		$this->github_api_url = "https://api.github.com/repos/{$this->username}/{$this->repository}/releases/latest";
 	}
 
 	/**
-	 * Mendaftarkan hooks ke WordPress.
+	 * Mendaftarkan filter WordPress untuk pembaruan plugin.
 	 */
 	public function init() {
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'check_update' ) );
-		add_filter( 'plugins_api', array( $this, 'get_plugin_info' ), 20, 3 );
-		add_filter( 'upgrader_post_install', array( $this, 'rename_extracted_folder' ), 10, 3 );
+		add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
 	}
 
 	/**
-	 * Mendapatkan rilis terbaru dari repositori GitHub.
-	 */
-	private function get_github_release() {
-		if ( ! empty( $this->github_response ) ) {
-			return $this->github_response;
-		}
-
-		$url = sprintf( 'https://api.github.com/repos/%s/%s/releases/latest', $this->username, $this->repo );
-
-		$args = array(
-			'headers' => array(
-				'User-Agent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . get_bloginfo( 'url' ),
-			),
-		);
-
-		$response = wp_remote_get( $url, $args );
-
-		if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) !== 200 ) {
-			return false;
-		}
-
-		$body = wp_remote_retrieve_body( $response );
-		$data = json_decode( $body );
-
-		if ( empty( $data ) ) {
-			return false;
-		}
-
-		$this->github_response = $data;
-		return $data;
-	}
-
-	/**
-	 * Membandingkan versi dan menyuntikkan update jika rilis baru tersedia di GitHub.
+	 * Memeriksa apakah ada versi baru di GitHub dan memasukkannya ke sistem pembaruan WordPress.
+	 *
+	 * @param object $transient Data transient pembaruan plugin saat ini.
+	 * @return object Data transient yang telah diperbarui jika ada versi baru.
 	 */
 	public function check_update( $transient ) {
 		if ( empty( $transient->checked ) ) {
 			return $transient;
 		}
 
-		$release = $this->get_github_release();
+		$release = $this->get_latest_release();
 		if ( ! $release ) {
 			return $transient;
 		}
 
-		// Membersihkan karakter 'v' di awal tag rilis (misal: v1.0.2 -> 1.0.2)
-		$github_version = ltrim( $release->tag_name, 'v' );
+		$remote_version = ltrim( $release['tag_name'], 'v' );
 
-		// Jika versi di GitHub lebih tinggi dari versi terpasang
-		if ( version_compare( $github_version, $this->current_version, '>' ) ) {
-			$obj              = new \stdClass();
-			$obj->slug        = 'wp-root-guard'; // Slug folder plugin
-			$obj->plugin      = $this->slug;     // Path relative
-			$obj->new_version = $github_version;
-			$obj->url         = $release->html_url;
-			$obj->package     = $release->zipball_url; // WordPress akan mengunduh source code zip rilis
+		// Bandingkan versi lokal dengan versi rilis di GitHub.
+		if ( version_compare( WP_ROOT_GUARD_VERSION, $remote_version, '<' ) ) {
+			$obj = new \stdClass();
+			// Dapatkan nama direktori plugin.
+			$obj->slug        = dirname( $this->plugin_slug );
+			$obj->plugin      = $this->plugin_slug;
+			$obj->new_version = $remote_version;
+			$obj->url         = "https://github.com/{$this->username}/{$this->repository}";
+			$obj->package     = $release['zipball_url']; // Link unduh otomatis arsip ZIP dari GitHub.
 
-			$transient->response[ $this->slug ] = $obj;
+			$transient->response[ $this->plugin_slug ] = $obj;
 		}
 
 		return $transient;
 	}
 
 	/**
-	 * Menyediakan detail plugin saat pengguna mengklik "View Details" di dashboard plugin.
+	 * Menampilkan informasi pop-up detail rilis saat pengguna mengklik "View version details".
+	 *
+	 * @param object|bool $result Data hasil pencarian API sebelumnya.
+	 * @param string      $action Jenis aksi API yang diminta.
+	 * @param object      $args Argumen query.
+	 * @return object Detail informasi plugin jika cocok.
 	 */
-	public function get_plugin_info( $result, $action, $args ) {
-		if ( 'plugin_information' !== $action || empty( $args->slug ) || 'wp-root-guard' !== $args->slug ) {
+	public function plugin_popup( $result, $action, $args ) {
+		if ( 'plugin_information' !== $action ) {
 			return $result;
 		}
 
-		$release = $this->get_github_release();
+		// Periksa apakah slug cocok dengan direktori plugin kita.
+		if ( dirname( $this->plugin_slug ) !== $args->slug ) {
+			return $result;
+		}
+
+		$release = $this->get_latest_release();
 		if ( ! $release ) {
 			return $result;
 		}
 
-		$github_version = ltrim( $release->tag_name, 'v' );
+		$remote_version = ltrim( $release['tag_name'], 'v' );
 
-		$res              = new \stdClass();
-		$res->name        = 'WP Root Guard';
-		$res->slug        = 'wp-root-guard';
-		$res->version     = $github_version;
-		$res->author      = 'Mujaddid Halimurrosyid';
-		$res->homepage    = 'https://indahweb.com/wp-root-guard';
-		$res->download_link = $release->zipball_url;
-		$res->sections    = array(
-			'description' => 'Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.',
-			'changelog'   => nl2br( esc_html( $release->body ) ),
+		$obj = new \stdClass();
+		$obj->name           = 'WP Root Guard';
+		$obj->slug           = $args->slug;
+		$obj->version        = $remote_version;
+		$obj->author         = '<a href="https://indahweb.com" target="_blank">Mujaddid Halimurrosyid</a>';
+		$obj->homepage       = "https://github.com/{$this->username}/{$this->repository}";
+		$obj->download_link  = $release['zipball_url'];
+		$obj->sections       = array(
+			'description' => esc_html__( 'Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.', 'wp-root-guard' ),
+			'changelog'   => isset( $release['body'] ) ? nl2br( esc_html( $release['body'] ) ) : '',
 		);
 
-		return $res;
+		return $obj;
 	}
 
 	/**
-	 * Merapikan folder ekstraksi GitHub setelah instalasi pembaruan.
+	 * Mengambil data rilis terbaru dari GitHub API dengan caching transien 12 jam.
 	 *
-	 * Secara default, GitHub menamai zip release sebagai: `username-repo-hash.zip`.
-	 * Saat WordPress mengekstraknya, foldernya akan bernama `username-repo-hash`.
-	 * Kita harus me-rename folder tersebut kembali menjadi `wp-root-guard`.
+	 * @return array|bool Data JSON rilis dari GitHub atau false jika gagal.
 	 */
-	public function rename_extracted_folder( $response, $hook_extra, $result ) {
-		// Pastikan kita memproses plugin kita sendiri
-		if ( empty( $hook_extra['plugin'] ) || $hook_extra['plugin'] !== $this->slug ) {
-			return $response;
+	private function get_latest_release() {
+		$transient_key = 'wp_root_guard_latest_github_release';
+		$cached        = get_transient( $transient_key );
+
+		if ( false !== $cached ) {
+			return $cached;
 		}
 
-		global $wp_filesystem;
+		$args = array(
+			'headers' => array(
+				'User-Agent' => 'WP-Root-Guard-Updater',
+			),
+			'timeout' => 10,
+		);
 
-		$install_directory = plugin_dir_path( $this->plugin_file ); // Path folder yang aktif (wp-content/plugins/wp-root-guard/)
-		$destination       = $result['destination'];               // Folder hasil ekstraksi sementara
+		$response = wp_remote_get( $this->github_api_url, $args );
 
-		// Lakukan rename folder jika tujuannya berbeda dengan folder asli kita
-		if ( $destination !== $install_directory ) {
-			// Hapus folder asli jika ada (agar tidak bentrok)
-			if ( $wp_filesystem->exists( $install_directory ) ) {
-				$wp_filesystem->delete( $install_directory, true );
-			}
-			
-			// Ubah nama folder ekstraksi baru menjadi nama folder target asli
-			$wp_filesystem->move( $destination, $install_directory );
-			$result['destination'] = $install_directory;
+		if ( is_wp_error( $response ) ) {
+			return false;
 		}
 
-		return $response;
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			return false;
+		}
+
+		$body    = wp_remote_retrieve_body( $response );
+		$release = json_decode( $body, true );
+
+		if ( ! is_array( $release ) || empty( $release['tag_name'] ) ) {
+			return false;
+		}
+
+		// Simpan hasil ke cache transien selama 12 jam untuk mencegah rate-limit API GitHub.
+		set_transient( $transient_key, $release, 12 * HOUR_IN_SECONDS );
+
+		return $release;
 	}
 }
