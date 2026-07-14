@@ -4,17 +4,17 @@ Tags: security, slot, root, guard, slots, protection, malware, scanner
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.
+Mendeteksi folder dan berkas asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.
 
 == Description ==
 
-WP Root Guard adalah plugin keamanan WordPress yang sangat ringan dan efisien. Plugin ini dirancang khusus untuk mendeteksi folder asing/mencurigakan yang muncul secara tiba-tiba di root directory WordPress Anda (seperti ABSPATH atau public_html), yang biasanya merupakan indikasi penyusupan malware judi slot.
+WP Root Guard adalah plugin keamanan WordPress yang sangat ringan dan efisien. Plugin ini dirancang khusus untuk mendeteksi folder dan berkas asing/mencurigakan yang muncul secara tiba-tiba di root directory WordPress Anda (seperti ABSPATH atau public_html), yang biasanya merupakan indikasi penyusupan malware judi slot atau webshell PHP.
 
-Dengan pendekatan non-rekursif, plugin ini hanya memindai direktori tingkat pertama di root WordPress Anda dan membandingkannya dengan baseline aman. WP Root Guard tidak memindai file atau membaca isi subfolder secara mendalam, menjadikannya sangat hemat sumber daya server dan cepat (selesai dalam hitungan milidetik).
+Dengan pendekatan non-rekursif, plugin ini hanya memindai direktori tingkat pertama di root WordPress Anda dan membandingkannya dengan baseline aman. WP Root Guard sangat hemat sumber daya server dan cepat (selesai dalam hitungan milidetik).
 
 == Installation ==
 
@@ -24,13 +24,20 @@ Dengan pendekatan non-rekursif, plugin ini hanya memindai direktori tingkat pert
 
 == Frequently Asked Questions ==
 
-= Apakah plugin ini melakukan pemindaian file? =
-Tidak, versi ini hanya mendeteksi folder baru yang mencurigakan di direktori root tingkat pertama untuk menjaga performa server tetap maksimal.
+= Apakah plugin ini melakukan pemindaian isi file? =
+Ya, versi ini memindai isi berkas PHP asing baru atau berkas hasil modifikasi secara ringan untuk mendeteksi tanda tangan webshell berbahaya.
 
 = Seberapa sering pemindaian otomatis berjalan? =
 Secara default, pemindaian berjalan setiap 5 menit sekali menggunakan sistem WP Cron bawaan WordPress.
 
 == Changelog ==
+
+= 1.2.0 =
+* Penambahan deteksi Berkas Asing baru di root.
+* Penambahan pengecekan Integritas Berkas (kalkulasi hash MD5 baseline) untuk mendeteksi modifikasi berkas core (seperti index.php).
+* Penambahan Pemindai Tanda Tangan Webshell untuk mendeteksi fungsi PHP berbahaya (seperti eval, base64_decode).
+* Modifikasi sistem karantina agar mendukung pemindahan berkas asing secara aman.
+* Pemisahan antarmuka dasbor dengan tabel khusus temuan berkas asing/dimodifikasi.
 
 = 1.1.0 =
 * Penambahan fitur Karantina Otomatis (Auto-Quarantine) dengan penguncian akses .htaccess.

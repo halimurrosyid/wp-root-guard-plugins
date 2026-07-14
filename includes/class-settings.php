@@ -92,12 +92,47 @@ class Settings {
 	}
 
 	/**
-	 * Mendapatkan semua folder gabungan dari default whitelist dan user whitelist.
+	 * Mendapatkan whitelist berkas bawaan di root WordPress.
 	 *
-	 * @return array Gabungan semua folder whitelist.
+	 * @return array Daftar nama berkas standar.
+	 */
+	public static function get_default_file_whitelist() {
+		return array(
+			'index.php',
+			'license.txt',
+			'readme.html',
+			'wp-activate.php',
+			'wp-blog-header.php',
+			'wp-comments-post.php',
+			'wp-config-sample.php',
+			'wp-config.php',
+			'wp-cron.php',
+			'wp-links-opml.php',
+			'wp-load.php',
+			'wp-login.php',
+			'wp-mail.php',
+			'wp-settings.php',
+			'wp-signup.php',
+			'wp-trackback.php',
+			'xmlrpc.php',
+			'.htaccess',
+			'web.config',
+			'robots.txt',
+			'favicon.ico',
+		);
+	}
+
+	/**
+	 * Mendapatkan semua folder dan file gabungan dari default whitelist dan user whitelist.
+	 *
+	 * @return array Gabungan semua folder dan file whitelist.
 	 */
 	public static function get_all_whitelisted() {
-		return array_merge( self::get_default_whitelist(), self::get_user_whitelist() );
+		return array_merge( 
+			self::get_default_whitelist(), 
+			self::get_default_file_whitelist(), 
+			self::get_user_whitelist() 
+		);
 	}
 
 	/**

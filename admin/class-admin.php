@@ -83,7 +83,7 @@ class Admin {
 	}
 
 	/**
-	 * Menampilkan notifikasi admin merah jika ada folder asing yang terdeteksi.
+	 * Menampilkan notifikasi admin merah jika ada folder/berkas asing aktif terdeteksi.
 	 */
 	public function render_threat_notice() {
 		// Jangan tampilkan notifikasi jika user sudah berada di halaman Root Guard.
@@ -99,11 +99,10 @@ class Admin {
 
 		$unknown_folders = Scanner::get_unknown_folders();
 
-		// Kita filter: folder yang berstatus dikarantina otomatis tidak perlu memicu spanduk bahaya utama,
-		// tapi folder asing aktif (Unknown Folder) yang belum diamankan wajib memicu spanduk bahaya!
+		// Kita filter: folder/berkas asing aktif yang belum diamankan wajib memicu spanduk bahaya!
 		$active_threats = 0;
-		foreach ( $unknown_folders as $folder ) {
-			if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) !== $folder['status'] ) {
+		foreach ( $unknown_folders as $item ) {
+			if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) !== $item['status'] ) {
 				$active_threats++;
 			}
 		}
@@ -118,8 +117,8 @@ class Admin {
 				<p style="margin: 0 0 8px 0; color: #50575e;">
 					<?php
 					printf(
-						/* translators: %d: jumlah folder asing */
-						esc_html( _n( 'Ditemukan %d folder asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ) ),
+						/* translators: %d: jumlah ancaman */
+						esc_html( _n( 'Ditemukan %d folder atau berkas asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder atau berkas asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ) ),
 						$active_threats
 					);
 					?>
@@ -152,7 +151,7 @@ class Admin {
 
 		$action = isset( $_POST['rg_action'] ) ? sanitize_text_field( $_POST['rg_action'] ) : '';
 
-		// Menentukan tab aktif untuk redirect yang presisi
+		// Menentukan tab aktif untuk redirect
 		$current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
 		$redirect_url = admin_url( 'index.php?page=wp-root-guard&tab=' . $current_tab );
 
@@ -181,7 +180,7 @@ class Admin {
 				if ( ! empty( $folder ) ) {
 					Settings::add_to_whitelist( $folder );
 					Logger::log(
-						esc_html__( 'Folder dipercayai (Whitelist)', 'wp-root-guard' ),
+						esc_html__( 'Folder/Berkas dipercayai (Whitelist)', 'wp-root-guard' ),
 						$folder,
 						esc_html__( 'Trusted', 'wp-root-guard' )
 					);
@@ -196,7 +195,7 @@ class Admin {
 				if ( ! empty( $folder ) ) {
 					Settings::remove_from_whitelist( $folder );
 					Logger::log(
-						esc_html__( 'Folder dihapus dari Whitelist', 'wp-root-guard' ),
+						esc_html__( 'Folder/Berkas dihapus dari Whitelist', 'wp-root-guard' ),
 						$folder,
 						esc_html__( 'Untrusted', 'wp-root-guard' )
 					);
@@ -291,7 +290,7 @@ class Admin {
 	}
 
 	/**
-	 * Merender halaman utama dasbor admin Root Guard.
+	 * Merender halaman utama dashboard admin Root Guard.
 	 */
 	public function render_admin_page() {
 		// Tentukan tab aktif
@@ -303,12 +302,13 @@ class Admin {
 		$unknown_folders = Scanner::get_unknown_folders();
 		$quarantined     = get_option( 'wp_root_guard_quarantined_folders', array() );
 		$user_whitelist  = Settings::get_user_whitelist();
-		$baseline_list   = Baseline::get_baseline();
+		$baseline_list   = Baseline::get_baseline_folders();
+		$baseline_files  = Baseline::get_baseline_files();
 		$logs            = Logger::get_logs();
 
 		// Hitung data ringkasan (Summary)
-		$protected_count   = count( $baseline_list ) + count( $user_whitelist );
-		$whitelisted_count = count( Settings::get_default_whitelist() ) + count( $user_whitelist );
+		$protected_count   = count( $baseline_list ) + count( $baseline_files ) + count( $user_whitelist );
+		$whitelisted_count = count( Settings::get_default_whitelist() ) + count( Settings::get_default_file_whitelist() ) + count( $user_whitelist );
 		$unknown_count     = count( $unknown_folders );
 		$quarantine_count  = is_array( $quarantined ) ? count( $quarantined ) : 0;
 
@@ -325,19 +325,19 @@ class Admin {
 
 		switch ( $message_code ) {
 			case 'scanned':
-				$notice_text = esc_html__( 'Pemindaian root folder selesai.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Pemindaian root directory selesai.', 'wp-root-guard' );
 				break;
 			case 'rebuilt':
-				$notice_text = esc_html__( 'Baseline folder berhasil dibangun ulang.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Baseline folder & berkas berhasil dibangun ulang.', 'wp-root-guard' );
 				break;
 			case 'reset':
-				$notice_text = esc_html__( 'Baseline berhasil direset. Silakan buat baseline baru.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Baseline berhasil direset. Silakan bangun ulang baseline baru.', 'wp-root-guard' );
 				break;
 			case 'trusted':
-				$notice_text = esc_html__( 'Folder berhasil ditambahkan ke whitelist kustom.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Folder/Berkas berhasil ditambahkan ke whitelist kustom.', 'wp-root-guard' );
 				break;
 			case 'untrusted':
-				$notice_text = esc_html__( 'Folder berhasil dihapus dari whitelist kustom.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Folder/Berkas berhasil dihapus dari whitelist kustom.', 'wp-root-guard' );
 				break;
 			case 'logs_cleared':
 				$notice_text = esc_html__( 'Riwayat log berhasil dibersihkan.', 'wp-root-guard' );
@@ -360,18 +360,18 @@ class Admin {
 				$notice_text  = esc_html__( 'Gagal mengirim email uji coba. Mohon periksa kembali konfigurasi email server Anda.', 'wp-root-guard' );
 				break;
 			case 'restored':
-				$notice_text = esc_html__( 'Folder berhasil dikembalikan dari karantina ke posisi root asal.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Berkas/Folder berhasil dipulihkan dari karantina ke posisi root asal.', 'wp-root-guard' );
 				break;
 			case 'restore_failed':
 				$notice_class = 'notice-error';
-				$notice_text  = esc_html__( 'Gagal mengembalikan folder. Pastikan folder asal tidak terisi folder dengan nama yang sama.', 'wp-root-guard' );
+				$notice_text  = esc_html__( 'Gagal memulihkan. Pastikan tidak ada berkas/folder dengan nama yang sama di root.', 'wp-root-guard' );
 				break;
 			case 'deleted_permanently':
-				$notice_text = esc_html__( 'Folder karantina berhasil dihapus secara permanen dari server.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Item karantina berhasil dihapus secara permanen dari server.', 'wp-root-guard' );
 				break;
 			case 'delete_failed':
 				$notice_class = 'notice-error';
-				$notice_text  = esc_html__( 'Gagal menghapus folder karantina dari server.', 'wp-root-guard' );
+				$notice_text  = esc_html__( 'Gagal menghapus item karantina dari server.', 'wp-root-guard' );
 				break;
 		}
 
@@ -419,11 +419,11 @@ class Admin {
 								<?php if ( 'safe' === $results['status'] ) : ?>
 									<span class="rg-icon-large">🛡️</span>
 									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder asing mencurigakan yang terdeteksi di root.', 'wp-root-guard' ); ?></p>
+									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder atau berkas asing mencurigakan yang terdeteksi di root.', 'wp-root-guard' ); ?></p>
 								<?php else : ?>
 									<span class="rg-icon-large">⚠️</span>
 									<span class="rg-status-text text-danger"><?php esc_html_e( 'BAHAYA', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi folder asing aktif di root WordPress Anda!', 'wp-root-guard' ); ?></p>
+									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman folder/berkas aktif di root WordPress Anda!', 'wp-root-guard' ); ?></p>
 								<?php endif; ?>
 							</div>
 						</div>
@@ -437,19 +437,19 @@ class Admin {
 						<div class="rg-card-body">
 							<table class="rg-summary-table">
 								<tr>
-									<th><?php esc_html_e( 'Folder Terlindungi (Baseline + User Whitelist):', 'wp-root-guard' ); ?></th>
+									<th><?php esc_html_e( 'Item Terlindungi (Baseline + User Whitelist):', 'wp-root-guard' ); ?></th>
 									<td><strong><?php echo esc_html( $protected_count ); ?></strong></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Folder Whitelisted:', 'wp-root-guard' ); ?></th>
+									<th><?php esc_html_e( 'Item Whitelisted (Default + Kustom):', 'wp-root-guard' ); ?></th>
 									<td><strong><?php echo esc_html( $whitelisted_count ); ?></strong></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Folder Asing Terdeteksi:', 'wp-root-guard' ); ?></th>
+									<th><?php esc_html_e( 'Folder/Berkas Asing Terdeteksi:', 'wp-root-guard' ); ?></th>
 									<td><strong class="<?php echo $unknown_count > 0 ? 'text-danger' : ''; ?>"><?php echo esc_html( $unknown_count ); ?></strong></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Folder dalam Karantina:', 'wp-root-guard' ); ?></th>
+									<th><?php esc_html_e( 'Item dalam Karantina:', 'wp-root-guard' ); ?></th>
 									<td><strong><?php echo esc_html( $quarantine_count ); ?></strong></td>
 								</tr>
 								<tr>
@@ -470,7 +470,7 @@ class Admin {
 					<button type="button" class="button button-primary button-large" onclick="submitRgAction('scan_now')">
 						<?php esc_html_e( 'Pindai Sekarang (Scan Now)', 'wp-root-guard' ); ?>
 					</button>
-					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membangun ulang baseline? Ini akan merekam kondisi folder root saat ini sebagai standar aman yang baru.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
+					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membangun ulang baseline? Ini akan merekam kondisi folder dan berkas root saat ini sebagai standar aman yang baru.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
 						<?php esc_html_e( 'Bangun Ulang Baseline (Rebuild Baseline)', 'wp-root-guard' ); ?>
 					</button>
 					<button type="button" class="button button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Peringatan: Reset Baseline akan menghapus data referensi aman dan hasil scan. Anda harus membangun ulang setelahnya. Lanjutkan?', 'wp-root-guard' ) ); ?>')) { submitRgAction('reset_baseline'); }">
@@ -478,23 +478,30 @@ class Admin {
 					</button>
 				</div>
 
-				<!-- HASIL PEMINDAIAN FOLDER ASING -->
+				<?php
+				// Pisahkan data temuan berdasarkan Tipe: Folder & File
+				$active_folders = array();
+				$active_files   = array();
+				foreach ( $unknown_folders as $item ) {
+					// Lewati jika berkas/folder sudah otomatis masuk karantina pada scan ini
+					if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $item['status'] ) {
+						continue;
+					}
+					if ( isset( $item['type'] ) && 'file' === $item['type'] ) {
+						$active_files[] = $item;
+					} else {
+						$active_folders[] = $item;
+					}
+				}
+				?>
+
+				<!-- TABEL 1: HASIL PEMINDAIAN FOLDER ASING -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
 						<h2>📂 <?php esc_html_e( 'Hasil Scan: Folder Asing Aktif', 'wp-root-guard' ); ?></h2>
 					</div>
 					<div class="rg-card-body">
-						<?php
-						// Kita saring folder asing yang benar-benar belum diamankan (bukan yang statusnya dikarantina otomatis pada scan ini)
-						$active_unknown = array();
-						foreach ( $unknown_folders as $folder ) {
-							if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) !== $folder['status'] ) {
-								$active_unknown[] = $folder;
-							}
-						}
-						?>
-						
-						<?php if ( empty( $active_unknown ) ) : ?>
+						<?php if ( empty( $active_folders ) ) : ?>
 							<div class="rg-empty-message">
 								<p>✅ <?php esc_html_e( 'No suspicious folders found.', 'wp-root-guard' ); ?></p>
 							</div>
@@ -511,7 +518,7 @@ class Admin {
 									</tr>
 								</thead>
 								<tbody>
-									<?php foreach ( $active_unknown as $folder ) : ?>
+									<?php foreach ( $active_folders as $folder ) : ?>
 										<tr>
 											<td><strong class="text-danger"><?php echo esc_html( $folder['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $folder['path'] ); ?></code></td>
@@ -531,22 +538,83 @@ class Admin {
 					</div>
 				</div>
 
-				<!-- DAFTAR FOLDER DIKARANTINA -->
+				<!-- TABEL 2: HASIL PEMINDAIAN BERKAS ASING / DIMODIFIKASI -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
-						<h2>🔒 <?php esc_html_e( 'Folder Terkarantina (Quarantined Folders)', 'wp-root-guard' ); ?></h2>
+						<h2>📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing / Dimodifikasi Aktif', 'wp-root-guard' ); ?></h2>
 					</div>
 					<div class="rg-card-body">
-						<?php if ( empty( $quarantined ) ) : ?>
+						<?php if ( empty( $active_files ) ) : ?>
 							<div class="rg-empty-message">
-								<p><?php esc_html_e( 'Tidak ada folder dalam karantina saat ini.', 'wp-root-guard' ); ?></p>
+								<p>✅ <?php esc_html_e( 'No suspicious or modified files found.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
+										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Indikasi / Keadaan berkas', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
+										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $active_files as $file ) : ?>
+										<tr>
+											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
+											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
+											<td>
+												<?php
+												$text_color = ( '-' !== $file['malware_indicator'] && false !== strpos( $file['malware_indicator'], 'Mencurigakan' ) ) ? 'text-danger' : 'color: #475569;';
+												?>
+												<span style="<?php echo esc_attr( $text_color ); ?> font-size: 13px; font-weight: 500;">
+													<?php echo esc_html( $file['malware_indicator'] ); ?>
+												</span>
+											</td>
+											<td><?php echo esc_html( $file['detection_time'] ); ?></td>
+											<td>
+												<?php
+												$status_label = $file['status'];
+												$badge_class  = 'badge-danger';
+												if ( esc_html__( 'Modified File', 'wp-root-guard' ) === $file['status'] ) {
+													$status_label = esc_html__( 'Berkas Dimodifikasi', 'wp-root-guard' );
+													$badge_class  = 'badge-warning'; // warna kuning untuk modifikasi
+												}
+												?>
+												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
+											</td>
+											<td>
+												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
+													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
+
+				<!-- DAFTAR ITEM DIKARANTINA -->
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header">
+						<h2>🔒 <?php esc_html_e( 'Daftar Karantina (Quarantined Folders & Files)', 'wp-root-guard' ); ?></h2>
+					</div>
+					<div class="rg-card-body">
+						<?php if ( empty( $quarantined ) ) : ?>
+							<div class="rg-empty-message">
+								<p><?php esc_html_e( 'Tidak ada folder atau berkas dalam karantina saat ini.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Tipe', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Nama Asli', 'wp-root-guard' ); ?></th>
-										<th><?php esc_html_e( 'Nama Folder Karantina', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Nama Folder/File Karantina', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Waktu Dikarantina', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Status Keamanan', 'wp-root-guard' ); ?></th>
 										<th style="width: 250px;"><?php esc_html_e( 'Aksi Karantina', 'wp-root-guard' ); ?></th>
@@ -554,16 +622,21 @@ class Admin {
 								</thead>
 								<tbody>
 									<?php foreach ( $quarantined as $item ) : ?>
+										<?php
+										$type_label = ( isset( $item['type'] ) && 'file' === $item['type'] ) ? esc_html__( 'Berkas', 'wp-root-guard' ) : esc_html__( 'Folder', 'wp-root-guard' );
+										$status_label = ( isset( $item['type'] ) && 'file' === $item['type'] ) ? esc_html__( 'Berkas Diisolasi', 'wp-root-guard' ) : esc_html__( 'Akses Diblokir (.htaccess)', 'wp-root-guard' );
+										?>
 										<tr>
+											<td><code><?php echo esc_html( $type_label ); ?></code></td>
 											<td><strong><?php echo esc_html( $item['original_name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $item['quarantine_name'] ); ?></code></td>
 											<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item['quarantine_time'] ) ) ); ?></td>
-											<td><span class="rg-badge badge-safe">🔒 <?php esc_html_e( 'Akses Diblokir (.htaccess)', 'wp-root-guard' ); ?></span></td>
+											<td><span class="rg-badge badge-safe">🔒 <?php echo esc_html( $status_label ); ?></span></td>
 											<td>
-												<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin memulihkan folder ini kembali ke root asal? Folder ini otomatis akan masuk ke Whitelist agar tidak dikarantina kembali.', 'wp-root-guard' ) ); ?>')) { submitFolderAction('restore_folder', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
+												<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin memulihkan item ini kembali ke root asal? Item ini otomatis akan masuk ke Whitelist agar tidak dikarantina kembali.', 'wp-root-guard' ) ); ?>')) { submitFolderAction('restore_folder', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
 													↩️ <?php esc_html_e( 'Restore', 'wp-root-guard' ); ?>
 												</button>
-												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Peringatan keras: Folder ini beserta seluruh file di dalamnya akan dihapus secara PERMANEN dari server. Tindakan ini tidak bisa dibatalkan. Lanjutkan?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_permanently', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
+												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Peringatan keras: Item ini beserta seluruh file di dalamnya akan dihapus secara PERMANEN dari server. Tindakan ini tidak bisa dibatalkan. Lanjutkan?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_permanently', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
 													🗑️ <?php esc_html_e( 'Hapus Permanen', 'wp-root-guard' ); ?>
 												</button>
 											</td>
@@ -578,18 +651,18 @@ class Admin {
 				<!-- WHITELIST USER -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
-						<h2>🛡️ <?php esc_html_e( 'Whitelist Kustom (Folder yang Dipercayai)', 'wp-root-guard' ); ?></h2>
+						<h2>🛡️ <?php esc_html_e( 'Whitelist Kustom (Folder & Berkas yang Dipercayai)', 'wp-root-guard' ); ?></h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $user_whitelist ) ) : ?>
 							<div class="rg-empty-message">
-								<p><?php esc_html_e( 'Belum ada folder yang Anda percayai secara kustom. Anda bisa menekan tombol "Trust Folder" pada folder asing di atas.', 'wp-root-guard' ); ?></p>
+								<p><?php esc_html_e( 'Belum ada folder atau berkas yang Anda percayai secara kustom. Anda bisa menekan tombol "Trust" pada ancaman asing di atas.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
-										<th><?php esc_html_e( 'Nama Folder', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Nama Folder/Berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Path Asumsi', 'wp-root-guard' ); ?></th>
 										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
@@ -600,7 +673,7 @@ class Admin {
 											<td><strong><?php echo esc_html( $folder_name ); ?></strong></td>
 											<td><code><?php echo esc_html( ABSPATH . $folder_name ); ?></code></td>
 											<td>
-												<button type="button" class="button button-small button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin mematikan status percaya untuk folder ini?', 'wp-root-guard' ) ); ?>')) { untrustFolder('<?php echo esc_js( $folder_name ); ?>'); }">
+												<button type="button" class="button button-small button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin mematikan status percaya untuk item ini?', 'wp-root-guard' ) ); ?>')) { untrustFolder('<?php echo esc_js( $folder_name ); ?>'); }">
 													❌ <?php esc_html_e( 'Jangan Percayai', 'wp-root-guard' ); ?>
 												</button>
 											</td>
@@ -632,7 +705,7 @@ class Admin {
 										<tr>
 											<th style="width: 150px;"><?php esc_html_e( 'Waktu', 'wp-root-guard' ); ?></th>
 											<th><?php esc_html_e( 'Kejadian', 'wp-root-guard' ); ?></th>
-											<th><?php esc_html_e( 'Nama Folder', 'wp-root-guard' ); ?></th>
+											<th><?php esc_html_e( 'Nama Folder/Berkas', 'wp-root-guard' ); ?></th>
 											<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
 										</tr>
 									</thead>
@@ -649,6 +722,8 @@ class Admin {
 														$badge_class .= ' badge-safe';
 													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Unknown', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Quarantined', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Deleted', 'wp-root-guard' ) === $log['status'] ) {
 														$badge_class .= ' badge-danger';
+													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $log['status'] ) {
+														$badge_class .= ' badge-warning';
 													}
 													?>
 													<span class="<?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $log['status'] ); ?></span>
@@ -685,7 +760,7 @@ class Admin {
 										<strong><?php esc_html_e( 'Aktifkan Karantina Otomatis', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Saat aktif, folder asing mencurigakan yang baru terdeteksi akan otomatis diganti namanya dan diblokir akses HTTP-nya menggunakan file .htaccess.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Saat aktif, folder asing dan berkas asing mencurigakan yang baru terdeteksi akan otomatis diganti namanya dan diamankan. Berkas inti yang dimodifikasi (seperti index.php) tidak dikarantina demi stabilitas situs.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>
@@ -696,12 +771,12 @@ class Admin {
 								<hr>
 								<div class="rg-form-group">
 									<label class="rg-switch-label">
-										<input type="checkbox" id="rg-toggle-email" name="enable_email_notifications" value="1" <?php checked( $settings['enable_email_notifications'], true ); ?> onchange="toggleEmailSection()">
+										<input type="checkbox" id="rg-toggle-email" name="enable_email_notifications" value="1" <?php checked( $settings['enable_email_notifications'], true ); ?>>
 										<span class="rg-switch-slider"></span>
 										<strong><?php esc_html_e( 'Aktifkan Notifikasi Email', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Kirim email laporan otomatis ketika ditemukan folder asing baru.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Kirim email laporan otomatis ketika ditemukan folder atau berkas asing baru serta berkas yang dimodifikasi.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 								
@@ -722,12 +797,12 @@ class Admin {
 								<hr>
 								<div class="rg-form-group">
 									<label class="rg-switch-label">
-										<input type="checkbox" id="rg-toggle-telegram" name="enable_telegram_notifications" value="1" <?php checked( $settings['enable_telegram_notifications'], true ); ?> onchange="toggleTelegramSection()">
+										<input type="checkbox" id="rg-toggle-telegram" name="enable_telegram_notifications" value="1" <?php checked( $settings['enable_telegram_notifications'], true ); ?>>
 										<span class="rg-switch-slider"></span>
 										<strong><?php esc_html_e( 'Aktifkan Notifikasi Telegram', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Kirim pesan instan otomatis melalui bot Telegram Anda saat ancaman baru terdeteksi.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Kirim pesan instan otomatis melalui bot Telegram Anda saat ancaman berkas/folder baru terdeteksi.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 
@@ -765,30 +840,28 @@ class Admin {
 				</div>
 
 				<script type="text/javascript">
-					function toggleEmailSection() {
-						var toggle = document.getElementById('rg-toggle-email');
+					// Memastikan toggle section berfungsi dengan baik
+					document.getElementById('rg-toggle-email').addEventListener('change', function() {
 						var section = document.getElementById('rg-email-fields');
-						if (toggle.checked) {
+						if (this.checked) {
 							section.classList.remove('hidden');
 						} else {
 							section.classList.add('hidden');
 						}
-					}
+					});
 
-					function toggleTelegramSection() {
-						var toggle = document.getElementById('rg-toggle-telegram');
+					document.getElementById('rg-toggle-telegram').addEventListener('change', function() {
 						var section = document.getElementById('rg-telegram-fields');
-						if (toggle.checked) {
+						if (this.checked) {
 							section.classList.remove('hidden');
 						} else {
 							section.classList.add('hidden');
 						}
-					}
+					});
 
 					function triggerTestNotification(action) {
 						var mainForm = document.getElementById('rg-action-form');
 						var actionField = document.getElementById('rg-action-field');
-						var folderField = document.getElementById('rg-folder-field');
 
 						// Hapus input tambahan tes sebelumnya agar bersih
 						var oldToken = document.getElementById('rg-test-token');
@@ -807,7 +880,6 @@ class Admin {
 								return;
 							}
 
-							// Sisipkan data input secara dinamis ke form tindakan
 							var tokenInput = document.createElement('input');
 							tokenInput.type = 'hidden';
 							tokenInput.name = 'telegram_bot_token';
