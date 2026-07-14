@@ -36,6 +36,10 @@ class Admin {
 
 		// Tambahkan link "Settings" pada daftar plugin WordPress.
 		add_filter( 'plugin_action_links_' . plugin_basename( WP_ROOT_GUARD_FILE ), array( $this, 'add_action_links' ) );
+
+		// AJAX Actions untuk pemindaian dinamis interaktif
+		add_action( 'wp_ajax_wp_root_guard_get_scan_queue', array( $this, 'ajax_get_scan_queue' ) );
+		add_action( 'wp_ajax_wp_root_guard_run_scan', array( $this, 'ajax_run_scan' ) );
 	}
 
 	/**
@@ -331,6 +335,68 @@ class Admin {
 	}
 
 	/**
+	 * AJAX Handler untuk mengambil antrean (queue) item yang akan dipindai.
+	 */
+	public function ajax_get_scan_queue() {
+		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+		}
+
+		$queue = array();
+
+		// 1. Ambil folder root
+		$folders = Baseline::scan_root_folders();
+		foreach ( $folders as $folder ) {
+			$queue[] = array(
+				'type' => 'folder',
+				'name' => $folder,
+			);
+		}
+
+		// 2. Ambil berkas root
+		$files = Baseline::scan_root_files();
+		foreach ( array_keys( $files ) as $file ) {
+			$queue[] = array(
+				'type' => 'file',
+				'name' => $file,
+			);
+		}
+
+		// 3. Tambahkan beberapa file inti penting (wp-admin/wp-includes) untuk simulasi scanner
+		$checksums = Scanner::get_core_checksums();
+		if ( is_array( $checksums ) ) {
+			$core_keys = array_keys( $checksums );
+			shuffle( $core_keys );
+			$limit = min( count( $core_keys ), 40 );
+			for ( $i = 0; $i < $limit; $i++ ) {
+				$queue[] = array(
+					'type' => 'core',
+					'name' => $core_keys[ $i ],
+				);
+			}
+		}
+
+		wp_send_json_success( array( 'queue' => $queue ) );
+	}
+
+	/**
+	 * AJAX Handler untuk menjalankan pemindaian backend yang sesungguhnya secara instan.
+	 */
+	public function ajax_run_scan() {
+		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+		}
+
+		Scanner::perform_scan();
+
+		wp_send_json_success( array( 'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ) ) );
+	}
+
+	/**
 	 * Merender halaman utama dashboard admin Root Guard.
 	 */
 	public function render_admin_page() {
@@ -582,7 +648,7 @@ class Admin {
 
 				<!-- PANEL TOMBOL UTAMA -->
 				<div class="rg-actions-bar">
-					<button type="button" class="button button-primary button-large" onclick="submitRgAction('scan_now')">
+					<button type="button" class="button button-primary button-large" onclick="startDynamicScan()">
 						<?php esc_html_e( 'Pindai Sekarang (Scan Now)', 'wp-root-guard' ); ?>
 					</button>
 					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membangun ulang baseline? Ini akan merekam kondisi folder dan berkas root saat ini sebagai standar aman yang baru.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
@@ -934,6 +1000,96 @@ class Admin {
 						<?php endif; ?>
 					</div>
 				</div>
+
+				<!-- MODAL DIALOG DYNAMIC SCANNING PROCESS -->
+				<div id="rg-scan-overlay" class="rg-modal-overlay hidden" style="background-color: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); z-index: 999999;">
+					<div class="rg-modal-container" style="max-width: 500px; text-align: center; border: none; border-radius: 16px; overflow: hidden; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #ffffff;">
+						<div class="rg-modal-body" style="padding: 40px 30px;">
+							<div class="rg-scanner-shield">
+								<span class="rg-shield-icon">🛡️</span>
+								<div class="rg-pulse-wave wave1"></div>
+								<div class="rg-pulse-wave wave2"></div>
+							</div>
+							
+							<h2 style="font-size: 24px; font-weight: 800; color: #ffffff; margin: 25px 0 10px 0; letter-spacing: 0.5px;">
+								<?php esc_html_e( 'Memindai Direktori Root...', 'wp-root-guard' ); ?>
+							</h2>
+							
+							<div id="rg-scan-percentage" style="font-size: 48px; font-weight: 900; color: #3b82f6; margin-bottom: 20px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
+								0%
+							</div>
+
+							<div style="background-color: rgba(255, 255, 255, 0.1); height: 10px; border-radius: 20px; overflow: hidden; margin-bottom: 25px; border: 1px solid rgba(255, 255, 255, 0.05);">
+								<div id="rg-scan-bar" style="background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%); width: 0%; height: 100%; border-radius: 20px; transition: width 0.1s ease; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
+							</div>
+
+							<div style="font-size: 14px; font-weight: 600; color: #94a3b8; min-height: 20px; margin-bottom: 10px;"><?php esc_html_e( 'Sedang memproses:', 'wp-root-guard' ); ?></div>
+							<div id="rg-scan-current-item" style="font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; background-color: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); min-height: 20px;">
+								-
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<script type="text/javascript">
+					function startDynamicScan() {
+						var overlay = document.getElementById('rg-scan-overlay');
+						var percentText = document.getElementById('rg-scan-percentage');
+						var progressBar = document.getElementById('rg-scan-bar');
+						var currentItemText = document.getElementById('rg-scan-current-item');
+						
+						overlay.classList.remove('hidden');
+
+						var data = {
+							action: 'wp_root_guard_get_scan_queue',
+							security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
+						};
+
+						jQuery.post(ajaxurl, data, function(response) {
+							if (response.success && response.data.queue) {
+								var queue = response.data.queue;
+								var total = queue.length;
+								var current = 0;
+
+								var interval = setInterval(function() {
+									if (current < total) {
+										var item = queue[current];
+										var prefix = item.type === 'folder' ? '📂 Folder: ' : (item.type === 'core' ? '🛡️ Core File: ' : '📄 File: ');
+										currentItemText.innerText = prefix + item.name;
+										
+										var percent = Math.floor((current / total) * 90);
+										percentText.innerText = percent + '%';
+										progressBar.style.width = percent + '%';
+										
+										current++;
+									} else {
+										clearInterval(interval);
+										currentItemText.innerText = '🛡️ Menganalisis hasil & tanda tangan malware...';
+										
+										var scanData = {
+											action: 'wp_root_guard_run_scan',
+											security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
+										};
+
+										jQuery.post(ajaxurl, scanData, function(scanResponse) {
+											percentText.innerText = '100%';
+											progressBar.style.width = '100%';
+											currentItemText.innerText = '✅ Pemindaian Selesai! Memuat ulang halaman...';
+											
+											setTimeout(function() {
+												window.location.href = '?page=wp-root-guard&tab=dashboard&message=scanned';
+											}, 800);
+										});
+									}
+								}, 30);
+							} else {
+								submitRgAction('scan_now');
+							}
+						}).fail(function() {
+							submitRgAction('scan_now');
+						});
+					}
+				</script>
 
 			<?php elseif ( 'settings' === $active_tab ) : ?>
 				<!-- TAB 2: SETTINGS CONTENT -->
