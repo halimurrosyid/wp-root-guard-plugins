@@ -78,7 +78,9 @@ class Admin {
 	 */
 	public function add_action_links( $links ) {
 		$settings_link = '<a href="' . admin_url( 'index.php?page=wp-root-guard&tab=settings' ) . '">' . esc_html__( 'Settings', 'wp-root-guard' ) . '</a>';
+		$check_link    = '<a href="' . wp_nonce_url( admin_url( 'plugins.php?wp_root_guard_check_update=1' ), 'wp_root_guard_check_update' ) . '">' . esc_html__( 'Check Update', 'wp-root-guard' ) . '</a>';
 		array_unshift( $links, $settings_link );
+		$links[] = $check_link;
 		return $links;
 	}
 
@@ -134,6 +136,16 @@ class Admin {
 	 * Menangani aksi tombol yang ditekan (Scan, Rebuild, Trust, dll).
 	 */
 	public function handle_admin_actions() {
+		// Penanganan untuk aksi GET "Check Update" dari daftar plugin
+		if ( isset( $_GET['wp_root_guard_check_update'] ) ) {
+			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( $_GET['_wpnonce'], 'wp_root_guard_check_update' ) && current_user_can( 'manage_options' ) ) {
+				delete_transient( 'wp_root_guard_latest_github_release' );
+				delete_site_transient( 'update_plugins' );
+				wp_safe_redirect( admin_url( 'plugins.php' ) );
+				exit;
+			}
+		}
+
 		if ( ! isset( $_POST['wp_root_guard_action_nonce'] ) ) {
 			return;
 		}
