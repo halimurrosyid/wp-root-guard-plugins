@@ -119,10 +119,12 @@ class Admin {
 				</p>
 				<p style="margin: 0 0 8px 0; color: #50575e;">
 					<?php
-					printf(
-						/* translators: %d: jumlah ancaman */
-						esc_html( _n( 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ) ),
-						$active_threats
+					echo esc_html(
+						sprintf(
+							/* translators: %d: jumlah ancaman */
+							_n( 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ),
+							$active_threats
+						)
 					);
 					?>
 				</p>

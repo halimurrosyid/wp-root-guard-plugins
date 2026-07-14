@@ -70,28 +70,28 @@ spl_autoload_register( function( $class ) {
 /**
  * Fungsi aktivasi plugin.
  */
-function activate_wp_root_guard() {
+function wp_root_guard_activate() {
 	if ( version_compare( PHP_VERSION, '8.1', '<' ) ) {
 		deactivate_plugins( plugin_basename( __FILE__ ) );
 		wp_die( esc_html__( 'Plugin ini memerlukan PHP versi 8.1 atau lebih tinggi.', 'wp-root-guard' ) );
 	}
 	WPRootGuard\Activator::activate();
 }
-register_activation_hook( __FILE__, 'activate_wp_root_guard' );
+register_activation_hook( __FILE__, 'wp_root_guard_activate' );
 
 /**
  * Fungsi deaktivasi plugin.
  */
-function deactivate_wp_root_guard() {
+function wp_root_guard_deactivate() {
 	WPRootGuard\Deactivator::deactivate();
 }
-register_deactivation_hook( __FILE__, 'deactivate_wp_root_guard' );
+register_deactivation_hook( __FILE__, 'wp_root_guard_deactivate' );
 
 /**
  * Memulai plugin.
  */
-function run_wp_root_guard() {
+function wp_root_guard_run() {
 	$plugin = new WPRootGuard\Plugin();
 	$plugin->run();
 }
-run_wp_root_guard();
+wp_root_guard_run();

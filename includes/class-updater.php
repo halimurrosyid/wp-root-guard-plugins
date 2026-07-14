@@ -178,6 +178,7 @@ class Updater {
 		$transient_key = 'wp_root_guard_latest_github_release';
 
 		// Hapus transient jika ada permintaan force-check dari dasbor pembaruan wordpress.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( isset( $_GET['force-check'] ) && 1 == $_GET['force-check'] ) {
 			delete_transient( $transient_key );
 		}
