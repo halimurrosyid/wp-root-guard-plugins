@@ -102,7 +102,7 @@ class Updater {
 			$obj->plugin      = $this->plugin_slug;
 			$obj->new_version = $remote_version;
 			$obj->url         = "https://github.com/{$this->username}/{$this->repository}";
-			$obj->package     = $release['zipball_url']; // Link unduh otomatis arsip ZIP dari GitHub.
+			$obj->package     = $this->get_package_url( $release ); // Link unduh otomatis arsip ZIP dari GitHub.
 
 			$transient->response[ $this->plugin_slug ] = $obj;
 		}
@@ -141,13 +141,32 @@ class Updater {
 		$obj->version        = $remote_version;
 		$obj->author         = '<a href="https://indahweb.com" target="_blank">Mujaddid Halimurrosyid</a>';
 		$obj->homepage       = "https://github.com/{$this->username}/{$this->repository}";
-		$obj->download_link  = $release['zipball_url'];
+		$obj->download_link  = $this->get_package_url( $release );
 		$obj->sections       = array(
 			'description' => esc_html__( 'Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.', 'wp-root-guard' ),
 			'changelog'   => isset( $release['body'] ) ? nl2br( esc_html( $release['body'] ) ) : '',
 		);
 
 		return $obj;
+	}
+
+	/**
+	 * Dapatkan URL download paket ZIP (browser_download_url dari asset zip atau zipball_url).
+	 *
+	 * @param array $release Data rilis dari GitHub API.
+	 * @return string URL paket download.
+	 */
+	private function get_package_url( $release ) {
+		$package_url = $release['zipball_url'];
+		if ( ! empty( $release['assets'] ) && is_array( $release['assets'] ) ) {
+			foreach ( $release['assets'] as $asset ) {
+				if ( ! empty( $asset['browser_download_url'] ) && false !== strpos( $asset['browser_download_url'], '.zip' ) ) {
+					$package_url = $asset['browser_download_url'];
+					break;
+				}
+			}
+		}
+		return $package_url;
 	}
 
 	/**

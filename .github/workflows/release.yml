@@ -1,0 +1,60 @@
+name: Auto Build & Release on Version Bump
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Extract version from plugin file
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 "Version:" wp-root-guard.php | awk '{print $3}')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Version found: $VERSION"
+
+      - name: Check if release already exists
+        id: check_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "Release v${{ env.VERSION }} already exists. Skipping release creation."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release v${{ env.VERSION }} does not exist. Creating a new one."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Clean Zip Package
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          # Buat struktur folder plugin yang bersih
+          mkdir wp-root-guard
+          
+          # Salin berkas rilis (abaikan git metadata dan konfigurasi GitHub Action)
+          cp -r admin includes languages readme.txt README.md uninstall.php wp-root-guard.php wp-root-guard/
+          
+          # Kompres menjadi zip
+          zip -r wp-root-guard.zip wp-root-guard
+          
+          echo "Build ZIP package completed successfully."
+
+      - name: Create GitHub Release and Upload Asset
+        if: steps.check_release.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ env.VERSION }}" wp-root-guard.zip \
+            --title "v${{ env.VERSION }}" \
+            --notes "Rilis otomatis versi ${{ env.VERSION }}. Lakukan pembaruan langsung secara aman dari dasbor WordPress Anda." \
+            --target main
