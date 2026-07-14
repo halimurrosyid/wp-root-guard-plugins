@@ -1,46 +1,40 @@
 # WP Root Guard
 
-🛡️ **WP Root Guard** adalah plugin WordPress yang sangat ringan dan efisien untuk mendeteksi folder dan berkas asing/mencurigakan yang muncul di direktori root website WordPress Anda (`ABSPATH` / `public_html`). Plugin ini ditujukan untuk mendeteksi penyusupan malware (seperti judi slot atau webshell PHP) secara cepat tanpa membebani kinerja server.
+🛡️ **WP Root Guard** adalah plugin WordPress yang sangat ringan dan efisien untuk mendeteksi folder, berkas asing, serta menjaga integritas berkas core di direktori root website Anda (`ABSPATH` / `public_html`), serta folder sistem `wp-admin` dan `wp-includes`. Plugin ini ditujukan untuk mendeteksi penyusupan malware (seperti judi slot atau webshell PHP) secara cepat dan melakukan pemulihan mandiri (*self-healing*) secara otomatis dari server resmi WordPress.org.
 
 ---
 
 ## Fitur Utama
 
-- **Pemindaian Non-Rekursif**: Hanya memindai direktori tingkat pertama di root WordPress. Tidak membaca file atau masuk ke subfolder (seperti `wp-content`), sehingga proses scan selesai dalam waktu kurang dari 0.01 detik dan ramah sumber daya.
-- **Learning Mode & Baseline (Folder & Berkas)**: Secara otomatis merekam folder dan seluruh berkas yang ada di root saat pertama kali diaktifkan sebagai "baseline" aman. Baseline disimpan dalam format JSON di `wp-content/uploads/wp-root-guard/baseline.json`.
-- **Integritas Berkas Inti (File Integrity Check) [BARU v1.2.0]**: Mencatat hash MD5 dari seluruh berkas root standar. Jika ada modifikasi atau injeksi kode pada berkas inti (seperti `index.php`), plugin akan langsung membunyikan alarm bahaya.
-- **Pemindai Tanda Tangan Webshell (Webshell Scanner) [BARU v1.2.0]**: Memindai isi berkas PHP asing atau berkas hasil modifikasi untuk mendeteksi fungsi-fungsi berbahaya seperti `eval()`, `base64_decode()`, `shell_exec()`, dll.
-- **Karantina Otomatis (Auto-Quarantine)**: Secara otomatis mengamankan folder atau berkas asing terdeteksi dengan memindahkannya ke direktori karantina dan meletakkan file `.htaccess` berisi perintah `Deny from all` untuk memblokir akses web.
-- ** whitelist & Pemulihan (Restore)**: Administrator dapat menandai folder/berkas asing sebagai "Trust" (Whitelist) atau memulihkannya kembali dari karantina.
-- **Notifikasi Telegram & Email**: Mengirim peringatan *real-time* instan ke Telegram Bot dan Email Administrator begitu ada folder/berkas asing baru terdeteksi atau berkas inti dimodifikasi, dilengkapi fitur anti-spam (hanya sekali kirim per temuan baru).
-- **Tab Pengaturan Terintegrasi**: Halaman konfigurasi di dasbor admin untuk mengelola sakelar Karantina Otomatis, pengiriman Notifikasi, serta tombol Kirim Uji Coba Telegram/Email.
+- **Pemindaian Hemat Daya & Cepat**: Menggabungkan pemindaian folder root tingkat pertama secara non-rekursif dengan pencocokan nama berkas core yang instan, sehingga hemat sumber daya server.
+- **Integritas Berkas Core (Core File Integrity Scanner) [BARU v1.3.0]**: Menghubungi API resmi WordPress.org untuk mengambil hash MD5 berkas asli. Mendeteksi jika berkas core WordPress di root, `wp-admin/`, dan `wp-includes/` mengalami perubahan isi (*Modified*) atau hilang (*Missing*).
+- **Deteksi File Penyusup Core (Core Injection Detection) [BARU v1.3.0]**: Mendeteksi adanya berkas asing baru yang tidak dikenal yang ditanam di dalam folder sensitif `wp-admin/` dan `wp-includes/`.
+- **Perbandingan Perbedaan Kode (Diff Viewer) [BARU v1.3.0]**: Menampilkan tabel pembanding visual kode baris per baris (*side-by-side code diff*) antara kode berkas lokal Anda (merah) dan kode resmi dari WordPress.org (hijau).
+- **Perbaikan Otomatis Mandiri (Self-Healing / Auto-Restore) [BARU v1.3.0]**: Menyediakan tombol **Perbaiki Berkas** untuk mengunduh kode asli berkas core langsung dari server SVN resmi WordPress.org dan menimpa berkas lokal yang rusak dengan aman.
+- **Karantina Otomatis (Auto-Quarantine)**: Secara otomatis mengisolasi folder asing, berkas asing root, dan berkas penyusup asing di folder core dengan memindahkannya ke direktori karantina dan memblokir akses web menggunakan `.htaccess`.
+- **Notifikasi Telegram & Email**: Mengirim peringatan *real-time* instan ke Telegram Bot dan Email Administrator begitu ada ancaman baru terdeteksi, dilengkapi fitur anti-spam (hanya sekali kirim per temuan baru).
 - **Pembaruan Otomatis dari GitHub**: Terintegrasi dengan pembaruan otomatis bawaan WordPress yang terhubung langsung ke rilis GitHub ini.
 
 ---
 
 ## Log Pembaruan (Changelog)
 
+### v1.3.0 (14 Juli 2026)
+- **Fitur Baru**: Integrasi dengan API Checksums resmi WordPress.org untuk verifikasi keaslian berkas core.
+- **Fitur Baru**: Deteksi berkas core yang dirubah (*Modified*), hilang (*Missing*), atau berkas asing penyusup (*Injection*) di folder `wp-admin` dan `wp-includes`.
+- **Fitur Baru**: Penambahan Visualisasi Perbedaan Kode (Diff Viewer) baris-per-baris dengan sorotan warna merah/hijau.
+- **Fitur Baru**: Penambahan tombol aksi Perbaikan Otomatis (*Self-Healing / Restore*) untuk memulihkan berkas core dari SVN WordPress.org secara instan.
+- **Penyempurnaan**: Pemisahan tabel dasbor khusus untuk Integritas Berkas Core dan fungsionalitas karantina berkas core asing.
+
 ### v1.2.0 (14 Juli 2026)
 - **Fitur Baru**: Menambahkan deteksi Berkas Asing baru di root.
-- **Fitur Baru**: Menambahkan pengecekan Integritas Berkas (kalkulasi hash MD5 baseline) untuk mendeteksi modifikasi berkas core (seperti `index.php` atau `wp-load.php`).
+- **Fitur Baru**: Menambahkan pengecekan Integritas Berkas (kalkulasi hash MD5 baseline) untuk mendeteksi modifikasi berkas core di tingkat root.
 - **Fitur Baru**: Menambahkan Pemindai Tanda Tangan Webshell untuk mendeteksi fungsi PHP berbahaya (seperti `eval`, `base64_decode`).
-- **Penyempurnaan**: Memodifikasi sistem karantina agar mendukung pemindahan berkas asing secara aman.
-- **Penyempurnaan**: Memisahkan antarmuka dasbor dengan tabel visual khusus temuan berkas asing/dimodifikasi.
 
 ### v1.1.0 (14 Juli 2026)
-- **Fitur Baru**: Menambahkan sistem Karantina Otomatis (Auto-Quarantine) dengan ganti nama otomatis dan penguncian akses `.htaccess`.
+- **Fitur Baru**: Menambahkan sistem Karantina Otomatis (Auto-Quarantine) dengan penguncian akses `.htaccess`.
 - **Fitur Baru**: Menambahkan Notifikasi Peringatan Instan ke Telegram Bot API dan Email Administrator.
-- **Fitur Baru**: Menambahkan Tab Pengaturan (Settings) di dasbor admin dengan tombol Uji Coba Koneksi.
-- **Penyempurnaan**: Memodifikasi modul pemindaian agar mengabaikan direktori yang sedang dikarantina.
-
-### v1.0.1 (13 Juli 2026)
-- Menambahkan integrasi GitHub Auto-Updater.
-- Mengatur informasi kontak pembuat: Mujaddid Halimurrosyid dan situs resmi `indahweb.com`.
-- Peningkatan keamanan nonce dan pembersihan direktori.
-
-### v1.0.0 (13 Juli 2026)
-- Rilis perdana plugin dengan arsitektur OOP dan namespace `WPRootGuard`.
-- Fitur Baseline JSON, Scan Instan, Whitelist Kustom, Logger, WP Cron (5 Menit), dan Widget Dashboard.
+- **Fitur Baru**: Menambahkan Tab Pengaturan (Settings) di dasbor admin.
 
 ---
 

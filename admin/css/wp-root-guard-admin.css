@@ -400,3 +400,107 @@ code {
 .rg-switch-label input[type="checkbox"]:focus + .rg-switch-slider {
 	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
+
+/* Modal overlay styling */
+.rg-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(15, 23, 42, 0.6);
+	backdrop-filter: blur(4px);
+	z-index: 99999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	animation: rgFadeIn 0.25s ease-out;
+}
+
+/* Modal container */
+.rg-modal-container {
+	background-color: #ffffff;
+	border-radius: 12px;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+	width: 90%;
+	max-width: 900px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	animation: rgSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Modal header */
+.rg-modal-header {
+	padding: 16px 24px;
+	border-bottom: 1px solid #e2e8f0;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	background-color: #f8fafc;
+}
+
+.rg-modal-header h2 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+	color: #0f172a;
+}
+
+.rg-modal-close {
+	font-size: 28px;
+	font-weight: 500;
+	color: #94a3b8;
+	text-decoration: none;
+	cursor: pointer;
+	line-height: 1;
+	transition: color 0.15s ease;
+}
+
+.rg-modal-close:hover {
+	color: #0f172a;
+}
+
+/* Modal body */
+.rg-modal-body {
+	padding: 24px;
+	overflow-y: auto;
+	max-height: 70vh;
+}
+
+/* Modal footer */
+.rg-modal-footer {
+	padding: 16px 24px;
+	border-top: 1px solid #e2e8f0;
+	background-color: #f8fafc;
+	display: flex;
+	justify-content: flex-end;
+	gap: 12px;
+}
+
+/* Animations */
+@keyframes rgFadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@keyframes rgSlideUp {
+	from { transform: translateY(20px); opacity: 0; }
+	to { transform: translateY(0); opacity: 1; }
+}
+
+/* Diff table styling */
+.rg-diff-table {
+	background-color: #ffffff;
+}
+
+.rg-diff-table th {
+	font-weight: 600;
+	color: #334155;
+	font-size: 13px;
+	border-bottom: 2px solid #cbd5e1;
+}
+
+.rg-diff-table td {
+	line-height: 1.5;
+}

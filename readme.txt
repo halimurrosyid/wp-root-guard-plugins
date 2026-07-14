@@ -1,52 +1,49 @@
 === WP Root Guard ===
 Contributors: indahweb, mujaddid-halimurrosyid
-Tags: security, slot, root, guard, slots, protection, malware, scanner
+Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-healing, diff
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Mendeteksi folder dan berkas asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.
+Mendeteksi folder, berkas asing, perubahan berkas core (wp-admin, wp-includes, root), komparasi kode diff, dan perbaikan otomatis aman dari WordPress.org.
 
 == Description ==
 
-WP Root Guard adalah plugin keamanan WordPress yang sangat ringan dan efisien. Plugin ini dirancang khusus untuk mendeteksi folder dan berkas asing/mencurigakan yang muncul secara tiba-tiba di root directory WordPress Anda (seperti ABSPATH atau public_html), yang biasanya merupakan indikasi penyusupan malware judi slot atau webshell PHP.
+WP Root Guard adalah plugin keamanan WordPress yang sangat ringan dan efisien. Plugin ini dirancang khusus untuk mendeteksi folder, berkas asing, serta menjaga integritas berkas core di direktori root WordPress Anda (`ABSPATH` / `public_html`), serta folder sistem `wp-admin` dan `wp-includes` dari ancaman malware judi slot atau webshell backdoor.
 
-Dengan pendekatan non-rekursif, plugin ini hanya memindai direktori tingkat pertama di root WordPress Anda dan membandingkannya dengan baseline aman. WP Root Guard sangat hemat sumber daya server dan cepat (selesai dalam hitungan milidetik).
+Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi perubahan isi kode berkas core, kehilangan berkas core, atau adanya berkas asing penyusup di dalam folder core. Dilengkapi visualisasi komparasi perbedaan kode (diff view) dan tombol perbaikan otomatis untuk memulihkan berkas core dari SVN WordPress.org secara instan.
 
 == Installation ==
 
 1. Unggah folder `wp-root-guard` ke direktori `/wp-content/plugins/`.
 2. Aktifkan plugin melalui menu 'Plugins' di WordPress.
-3. Buka menu 'Dashboard -> Root Guard' untuk mengelola dan melihat status keamanan.
+3. Buka menu 'Dashboard -> Root Guard' untuk melihat status keamanan.
 
 == Frequently Asked Questions ==
 
-= Apakah plugin ini melakukan pemindaian isi file? =
-Ya, versi ini memindai isi berkas PHP asing baru atau berkas hasil modifikasi secara ringan untuk mendeteksi tanda tangan webshell berbahaya.
+= Apakah fitur perbaikan berkas core aman digunakan? =
+Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN resmi WordPress.org sesuai versi WordPress terpasang Anda, lalu menimpanya dengan aman.
 
-= Seberapa sering pemindaian otomatis berjalan? =
-Secara default, pemindaian berjalan setiap 5 menit sekali menggunakan sistem WP Cron bawaan WordPress.
+= Apakah plugin ini memindai folder wp-content? =
+Tidak, karena wp-content berisi berkas dinamis tema, plugin, dan media unggahan Anda. WP Root Guard berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) untuk mencegah celah eksekusi backdoor utama.
 
 == Changelog ==
 
+= 1.3.0 =
+* Penambahan verifikasi integritas berkas core via API Checksums resmi WordPress.org.
+* Deteksi berkas core yang dirubah (Modified), hilang (Missing), atau disisipkan (Injected) di folder wp-admin dan wp-includes.
+* Penambahan pembanding kode visual (Diff Viewer) baris-per-baris lokal vs asli resmi.
+* Penambahan fitur perbaikan otomatis (Self-Healing / Restore) berkas core dari SVN WordPress.org.
+
 = 1.2.0 =
 * Penambahan deteksi Berkas Asing baru di root.
-* Penambahan pengecekan Integritas Berkas (kalkulasi hash MD5 baseline) untuk mendeteksi modifikasi berkas core (seperti index.php).
+* Penambahan pengecekan Integritas Berkas (kalkulasi hash MD5 baseline) di root.
 * Penambahan Pemindai Tanda Tangan Webshell untuk mendeteksi fungsi PHP berbahaya (seperti eval, base64_decode).
-* Modifikasi sistem karantina agar mendukung pemindahan berkas asing secara aman.
-* Pemisahan antarmuka dasbor dengan tabel khusus temuan berkas asing/dimodifikasi.
 
 = 1.1.0 =
 * Penambahan fitur Karantina Otomatis (Auto-Quarantine) dengan penguncian akses .htaccess.
 * Penambahan sistem Notifikasi Peringatan Instan ke Telegram Bot API dan Email Administrator.
 * Penambahan Tab Pengaturan (Settings) di dasbor admin.
-* Modifikasi modul pemindaian agar mengabaikan direktori yang sedang dikarantina.
-
-= 1.0.1 =
-* Update informasi pembuat dan situs resmi (Mujaddid Halimurrosyid - indahweb.com).
-
-= 1.0.0 =
-* Rilis perdana dengan fitur Baseline, Pemindaian Root Non-rekursif, Whitelist Kustom, Notifikasi Admin, dan Dashboard Widget.

@@ -86,20 +86,17 @@ class Admin {
 	 * Menampilkan notifikasi admin merah jika ada folder/berkas asing aktif terdeteksi.
 	 */
 	public function render_threat_notice() {
-		// Jangan tampilkan notifikasi jika user sudah berada di halaman Root Guard.
 		$screen = get_current_screen();
 		if ( $screen && 'dashboard_page_wp-root-guard' === $screen->id ) {
 			return;
 		}
 
-		// Periksa hak akses.
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 
 		$unknown_folders = Scanner::get_unknown_folders();
 
-		// Kita filter: folder/berkas asing aktif yang belum diamankan wajib memicu spanduk bahaya!
 		$active_threats = 0;
 		foreach ( $unknown_folders as $item ) {
 			if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) !== $item['status'] ) {
@@ -118,7 +115,7 @@ class Admin {
 					<?php
 					printf(
 						/* translators: %d: jumlah ancaman */
-						esc_html( _n( 'Ditemukan %d folder atau berkas asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder atau berkas asing aktif yang tidak dikenal di root WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ) ),
+						esc_html( _n( 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', 'Ditemukan %d folder atau berkas asing/core yang tidak dikenal atau berubah di WordPress Anda dan belum diamankan. Harap segera amankan!', $active_threats, 'wp-root-guard' ) ),
 						$active_threats
 					);
 					?>
@@ -151,7 +148,6 @@ class Admin {
 
 		$action = isset( $_POST['rg_action'] ) ? sanitize_text_field( $_POST['rg_action'] ) : '';
 
-		// Menentukan tab aktif untuk redirect
 		$current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
 		$redirect_url = admin_url( 'index.php?page=wp-root-guard&tab=' . $current_tab );
 
@@ -201,6 +197,39 @@ class Admin {
 					);
 					Scanner::perform_scan();
 					wp_safe_redirect( add_query_arg( 'message', 'untrusted', $redirect_url ) );
+					exit;
+				}
+				break;
+
+			case 'quarantine_file':
+				$file = isset( $_POST['folder'] ) ? sanitize_text_field( $_POST['folder'] ) : '';
+				if ( ! empty( $file ) ) {
+					if ( false !== strpos( $file, '/' ) ) {
+						$success = Scanner::quarantine_core_file( $file );
+					} else {
+						$success = Scanner::quarantine_file( $file );
+					}
+
+					if ( $success ) {
+						Scanner::perform_scan();
+						wp_safe_redirect( add_query_arg( 'message', 'quarantined', $redirect_url ) );
+					} else {
+						wp_safe_redirect( add_query_arg( 'message', 'quarantine_failed', $redirect_url ) );
+					}
+					exit;
+				}
+				break;
+
+			case 'fix_core_file':
+				$file = isset( $_POST['folder'] ) ? sanitize_text_field( $_POST['folder'] ) : '';
+				if ( ! empty( $file ) ) {
+					$success = Scanner::restore_core_file( $file );
+					if ( $success ) {
+						Scanner::perform_scan();
+						wp_safe_redirect( add_query_arg( 'message', 'core_fixed', $redirect_url ) );
+					} else {
+						wp_safe_redirect( add_query_arg( 'message', 'core_fix_failed', $redirect_url ) );
+					}
 					exit;
 				}
 				break;
@@ -293,7 +322,6 @@ class Admin {
 	 * Merender halaman utama dashboard admin Root Guard.
 	 */
 	public function render_admin_page() {
-		// Tentukan tab aktif
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
 
 		// Data Konfigurasi & Opsi
@@ -314,18 +342,16 @@ class Admin {
 
 		$last_scan_time = ! empty( $results['last_scan'] ) ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $results['last_scan'] ) ) : esc_html__( 'Belum pernah dipindai', 'wp-root-guard' );
 
-		// Hitung scan berikutnya
 		$next_cron      = wp_next_scheduled( 'wp_root_guard_cron_scan' );
 		$next_scan_time = $next_cron ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_cron ) : esc_html__( 'Tidak dijadwalkan', 'wp-root-guard' );
 
-		// Tampilkan pesan konfirmasi aksi jika ada
 		$message_code = isset( $_GET['message'] ) ? sanitize_text_field( $_GET['message'] ) : '';
 		$notice_text  = '';
 		$notice_class = 'notice-success';
 
 		switch ( $message_code ) {
 			case 'scanned':
-				$notice_text = esc_html__( 'Pemindaian root directory selesai.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Pemindaian root & berkas core selesai.', 'wp-root-guard' );
 				break;
 			case 'rebuilt':
 				$notice_text = esc_html__( 'Baseline folder & berkas berhasil dibangun ulang.', 'wp-root-guard' );
@@ -338,6 +364,20 @@ class Admin {
 				break;
 			case 'untrusted':
 				$notice_text = esc_html__( 'Folder/Berkas berhasil dihapus dari whitelist kustom.', 'wp-root-guard' );
+				break;
+			case 'quarantined':
+				$notice_text = esc_html__( 'Berkas berhasil dipindahkan ke karantina.', 'wp-root-guard' );
+				break;
+			case 'quarantine_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Gagal mengkarantina berkas. Pastikan perizinan berkas di server Anda benar.', 'wp-root-guard' );
+				break;
+			case 'core_fixed':
+				$notice_text = esc_html__( 'Berkas core WordPress berhasil diperbaiki ke keadaan asli.', 'wp-root-guard' );
+				break;
+			case 'core_fix_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Gagal memulihkan berkas core dari server WordPress.org.', 'wp-root-guard' );
 				break;
 			case 'logs_cleared':
 				$notice_text = esc_html__( 'Riwayat log berhasil dibersihkan.', 'wp-root-guard' );
@@ -406,6 +446,69 @@ class Admin {
 			<?php if ( 'dashboard' === $active_tab ) : ?>
 				<!-- TAB 1: DASHBOARD CONTENT -->
 
+				<!-- MODAL POP-UP COMPARATIVE DIFF VIEWER -->
+				<?php
+				$view_diff_file = isset( $_GET['view_diff'] ) ? sanitize_text_field( $_GET['view_diff'] ) : '';
+				if ( ! empty( $view_diff_file ) ) :
+					$diff = Scanner::get_file_diff( $view_diff_file );
+					?>
+					<div class="rg-modal-overlay">
+						<div class="rg-modal-container">
+							<div class="rg-modal-header">
+								<h2>🔍 <?php printf( /* translators: %s: nama file */ esc_html__( 'Bandingkan Kode: %s', 'wp-root-guard' ), esc_html( $view_diff_file ) ); ?></h2>
+								<a href="?page=wp-root-guard&tab=dashboard" class="rg-modal-close">&times;</a>
+							</div>
+							<div class="rg-modal-body">
+								<p class="rg-field-desc" style="margin-bottom: 15px;">
+									<?php esc_html_e( 'Berikut perbedaan kode baris yang terdeteksi antara berkas lokal Anda (merah) dan berkas asli bawaan dari server resmi WordPress.org (hijau).', 'wp-root-guard' ); ?>
+								</p>
+
+								<?php if ( isset( $diff['error'] ) ) : ?>
+									<div class="notice notice-error inline" style="margin: 0;">
+										<p><?php echo esc_html( $diff['error'] ); ?></p>
+									</div>
+								<?php elseif ( empty( $diff ) ) : ?>
+									<div class="notice notice-success inline" style="margin: 0; padding: 15px;">
+										<p>✅ <?php esc_html_e( 'Tidak ada perbedaan kode baris yang ditemukan. Berkas lokal sama persis dengan berkas asli resmi.', 'wp-root-guard' ); ?></p>
+									</div>
+								<?php else : ?>
+									<div class="rg-diff-wrapper" style="max-height: 450px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 6px;">
+										<table class="rg-diff-table" style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 13px;">
+											<thead>
+												<tr style="background-color: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left;">
+													<th style="padding: 8px 10px; width: 60px; border-right: 1px solid #cbd5e1;"><?php esc_html_e( 'Baris', 'wp-root-guard' ); ?></th>
+													<th style="padding: 8px 12px; background-color: #f0fdf4; color: #15803d; border-right: 1px solid #cbd5e1;"><?php esc_html_e( 'Berkas Asli (WordPress.org)', 'wp-root-guard' ); ?></th>
+													<th style="padding: 8px 12px; background-color: #fef2f2; color: #b91c1c;"><?php esc_html_e( 'Berkas Lokal Anda', 'wp-root-guard' ); ?></th>
+												</tr>
+											</thead>
+											<tbody>
+												<?php foreach ( $diff as $line ) : ?>
+													<tr style="border-bottom: 1px solid #e2e8f0;">
+														<td style="padding: 6px 10px; text-align: center; font-weight: bold; background-color: #f8fafc; border-right: 1px solid #cbd5e1; color: #64748b;"><?php echo esc_html( $line['line'] ); ?></td>
+														<td style="padding: 6px 12px; background-color: #f6fdf9; border-right: 1px solid #cbd5e1; white-space: pre-wrap; word-break: break-all; color: #166534;"><?php echo esc_html( $line['original'] ); ?></td>
+														<td style="padding: 6px 12px; background-color: #fff5f5; white-space: pre-wrap; word-break: break-all; color: #991b1b;"><?php echo esc_html( $line['local'] ); ?></td>
+													</tr>
+												<?php endforeach; ?>
+											</tbody>
+										</table>
+									</div>
+								<?php endif; ?>
+							</div>
+							<div class="rg-modal-footer" style="display: flex; justify-content: flex-end; gap: 10px;">
+								<a href="?page=wp-root-guard&tab=dashboard" class="button button-secondary"><?php esc_html_e( 'Tutup', 'wp-root-guard' ); ?></a>
+								<form method="post" action="" style="margin: 0;">
+									<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
+									<input type="hidden" name="rg_action" value="fix_core_file">
+									<input type="hidden" name="folder" value="<?php echo esc_attr( $view_diff_file ); ?>">
+									<button type="submit" class="button button-primary" style="background-color: #10b981; border-color: #10b981;">
+										🛠️ <?php esc_html_e( 'Perbaiki Berkas Sekarang', 'wp-root-guard' ); ?>
+									</button>
+								</form>
+							</div>
+						</div>
+					</div>
+				<?php endif; ?>
+
 				<!-- Baris Atas: Status Card & Ringkasan -->
 				<div class="rg-dashboard-grid">
 					
@@ -419,11 +522,11 @@ class Admin {
 								<?php if ( 'safe' === $results['status'] ) : ?>
 									<span class="rg-icon-large">🛡️</span>
 									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder atau berkas asing mencurigakan yang terdeteksi di root.', 'wp-root-guard' ); ?></p>
+									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder, berkas asing, atau berkas core bermasalah yang terdeteksi.', 'wp-root-guard' ); ?></p>
 								<?php else : ?>
 									<span class="rg-icon-large">⚠️</span>
 									<span class="rg-status-text text-danger"><?php esc_html_e( 'BAHAYA', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman folder/berkas aktif di root WordPress Anda!', 'wp-root-guard' ); ?></p>
+									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman berkas/folder asing atau modifikasi core aktif!', 'wp-root-guard' ); ?></p>
 								<?php endif; ?>
 							</div>
 						</div>
@@ -479,15 +582,19 @@ class Admin {
 				</div>
 
 				<?php
-				// Pisahkan data temuan berdasarkan Tipe: Folder & File
+				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), dan core_file (wp-admin/wp-includes/root core)
 				$active_folders = array();
 				$active_files   = array();
+				$active_core    = array();
 				foreach ( $unknown_folders as $item ) {
-					// Lewati jika berkas/folder sudah otomatis masuk karantina pada scan ini
 					if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $item['status'] ) {
 						continue;
 					}
-					if ( isset( $item['type'] ) && 'file' === $item['type'] ) {
+
+					$type = isset( $item['type'] ) ? $item['type'] : 'folder';
+					if ( 'core_file' === $type ) {
+						$active_core[] = $item;
+					} elseif ( 'file' === $type ) {
 						$active_files[] = $item;
 					} else {
 						$active_folders[] = $item;
@@ -538,15 +645,91 @@ class Admin {
 					</div>
 				</div>
 
-				<!-- TABEL 2: HASIL PEMINDAIAN BERKAS ASING / DIMODIFIKASI -->
+				<!-- TABEL 2: INTEGRITAS BERKAS CORE WORDPRESS (wp-admin, wp-includes, root core) -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
-						<h2>📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing / Dimodifikasi Aktif', 'wp-root-guard' ); ?></h2>
+						<h2>🛡️ <?php esc_html_e( 'Hasil Scan: Integritas Berkas Core (wp-admin, wp-includes, root)', 'wp-root-guard' ); ?></h2>
+					</div>
+					<div class="rg-card-body">
+						<?php if ( empty( $active_core ) ) : ?>
+							<div class="rg-empty-message">
+								<p>✅ <?php esc_html_e( 'Semua berkas core WordPress sesuai standar resmi dan aman.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Keadaan Berkas / Indikasi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
+										<th style="width: 250px;"><?php esc_html_e( 'Aksi Pemulihan', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $active_core as $file ) : ?>
+										<tr>
+											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
+											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
+											<td>
+												<?php
+												$text_color = ( '-' !== $file['malware_indicator'] && ( false !== strpos( $file['malware_indicator'], 'Mencurigakan' ) || false !== strpos( $file['malware_indicator'], 'Penyusupan' ) ) ) ? 'text-danger' : 'color: #475569;';
+												?>
+												<span style="<?php echo esc_attr( $text_color ); ?> font-size: 13px; font-weight: 500;">
+													<?php echo esc_html( $file['malware_indicator'] ); ?>
+												</span>
+											</td>
+											<td>
+												<?php
+												$status_label = $file['status'];
+												$badge_class  = 'badge-danger';
+												if ( 'Modified Core File' === $file['status'] ) {
+													$status_label = esc_html__( 'Berkas Dimodifikasi', 'wp-root-guard' );
+													$badge_class  = 'badge-warning';
+												} elseif ( 'Missing Core File' === $file['status'] ) {
+													$status_label = esc_html__( 'Berkas Hilang', 'wp-root-guard' );
+													$badge_class  = 'badge-danger';
+												} elseif ( 'Suspicious Core Injection' === $file['status'] ) {
+													$status_label = esc_html__( 'Berkas Penyusup', 'wp-root-guard' );
+													$badge_class  = 'badge-danger';
+												}
+												?>
+												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
+											</td>
+											<td>
+												<?php if ( 'Suspicious Core Injection' === $file['status'] ) : ?>
+													<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
+														👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
+													</button>
+													<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas penyusup core ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
+														🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
+													</button>
+												<?php else : ?>
+													<a href="?page=wp-root-guard&tab=dashboard&view_diff=<?php echo urlencode( $file['name'] ); ?>" class="button button-small button-secondary">
+														🔍 <?php esc_html_e( 'Bandingkan Kode', 'wp-root-guard' ); ?>
+													</a>
+													<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menimpa berkas ini dengan berkas asli bawaan dari server resmi WordPress.org?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('fix_core_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
+														🛠️ <?php esc_html_e( 'Perbaiki', 'wp-root-guard' ); ?>
+													</button>
+												<?php endif; ?>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
+
+				<!-- TABEL 3: HASIL PEMINDAIAN BERKAS ASING DI ROOT -->
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header">
+						<h2>📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing Aktif di Root', 'wp-root-guard' ); ?></h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $active_files ) ) : ?>
 							<div class="rg-empty-message">
-								<p>✅ <?php esc_html_e( 'No suspicious or modified files found.', 'wp-root-guard' ); ?></p>
+								<p>✅ <?php esc_html_e( 'No suspicious or modified files found in root.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
@@ -557,7 +740,7 @@ class Admin {
 										<th><?php esc_html_e( 'Indikasi / Keadaan berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
-										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+										<th style="width: 250px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
 								</thead>
 								<tbody>
@@ -580,7 +763,7 @@ class Admin {
 												$badge_class  = 'badge-danger';
 												if ( esc_html__( 'Modified File', 'wp-root-guard' ) === $file['status'] ) {
 													$status_label = esc_html__( 'Berkas Dimodifikasi', 'wp-root-guard' );
-													$badge_class  = 'badge-warning'; // warna kuning untuk modifikasi
+													$badge_class  = 'badge-warning';
 												}
 												?>
 												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
@@ -588,6 +771,9 @@ class Admin {
 											<td>
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
 													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas asing ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
 												</button>
 											</td>
 										</tr>
@@ -760,7 +946,7 @@ class Admin {
 										<strong><?php esc_html_e( 'Aktifkan Karantina Otomatis', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Saat aktif, folder asing dan berkas asing mencurigakan yang baru terdeteksi akan otomatis diganti namanya dan diamankan. Berkas inti yang dimodifikasi (seperti index.php) tidak dikarantina demi stabilitas situs.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Saat aktif, folder asing, berkas asing root, dan berkas penyusup asing di folder core (wp-admin & wp-includes) yang baru terdeteksi akan otomatis diganti namanya dan dikarantina. Berkas core terdaftar resmi yang dimodifikasi tidak dikarantina demi stabilitas situs.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>
@@ -840,7 +1026,6 @@ class Admin {
 				</div>
 
 				<script type="text/javascript">
-					// Memastikan toggle section berfungsi dengan baik
 					document.getElementById('rg-toggle-email').addEventListener('change', function() {
 						var section = document.getElementById('rg-email-fields');
 						if (this.checked) {
@@ -863,7 +1048,6 @@ class Admin {
 						var mainForm = document.getElementById('rg-action-form');
 						var actionField = document.getElementById('rg-action-field');
 
-						// Hapus input tambahan tes sebelumnya agar bersih
 						var oldToken = document.getElementById('rg-test-token');
 						if (oldToken) oldToken.remove();
 						var oldChat = document.getElementById('rg-test-chat');

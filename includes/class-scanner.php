@@ -21,11 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Scanner {
 
 	/**
-	 * Melakukan pemindaian root directory secara menyeluruh (folder dan berkas).
+	 * Melakukan pemindaian root directory secara menyeluruh (folder, berkas root, dan integritas core).
 	 *
 	 * @return array Hasil pemindaian berupa status proteksi dan daftar ancaman terdeteksi.
 	 */
 	public static function perform_scan() {
+		$detection_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) );
+
 		// 1. Dapatkan folder & berkas saat ini di root.
 		$current_folders = Baseline::scan_root_folders();
 		$current_files   = Baseline::scan_root_files();
@@ -53,7 +55,6 @@ class Scanner {
 			if ( ! in_array( $folder, $known_folders, true ) ) {
 				$full_path = ABSPATH . $folder;
 
-				// Dapatkan waktu pembuatan folder jika memungkinkan.
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 				if ( file_exists( $full_path ) ) {
 					$ctime = filectime( $full_path );
@@ -62,10 +63,8 @@ class Scanner {
 					}
 				}
 
-				$detection_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) );
 				$status_text    = esc_html__( 'Unknown Folder', 'wp-root-guard' );
 
-				// Jika fitur karantina otomatis aktif, langsung amankan folder.
 				if ( $settings['enable_auto_quarantine'] ) {
 					$quarantine_name = self::quarantine_folder( $folder );
 					if ( false !== $quarantine_name ) {
@@ -93,12 +92,12 @@ class Scanner {
 		}
 
 		// ==========================================
-		// B. PEMINDAIAN BERKAS (FILES)
+		// B. PEMINDAIAN BERKAS (FILES) DI ROOT
 		// ==========================================
 		foreach ( $current_files as $file => $current_hash ) {
 			$file_path = ABSPATH . $file;
 
-			// Pengecekan 1: Berkas Asing (Tidak dikenal)
+			// Pengecekan: Berkas Asing di root (bukan bagian dari whitelist/baseline)
 			if ( ! in_array( $file, $known_files, true ) ) {
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 				if ( file_exists( $file_path ) ) {
@@ -108,14 +107,11 @@ class Scanner {
 					}
 				}
 
-				$detection_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) );
 				$status_text    = esc_html__( 'Unknown File', 'wp-root-guard' );
 
-				// Pindai tanda tangan malware (webshell)
 				$malware_indicator = self::scan_file_for_webshell( $file_path );
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Bersih (Bukan Webshell)', 'wp-root-guard' );
 
-				// Jalankan karantina otomatis jika aktif
 				if ( $settings['enable_auto_quarantine'] ) {
 					$quarantine_name = self::quarantine_file( $file );
 					if ( false !== $quarantine_name ) {
@@ -140,7 +136,7 @@ class Scanner {
 					'malware_indicator' => $malware_label,
 				);
 
-			// Pengecekan 2: Berkas Terdaftar tapi MD5 Hash Berbeda (Dimodifikasi / Diinjeksi)
+			// Pengecekan: Berkas Terdaftar di baseline root tapi MD5 Hash Berbeda (Dimodifikasi)
 			} elseif ( isset( $baseline_files[ $file ] ) && $baseline_files[ $file ] !== $current_hash ) {
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 				if ( file_exists( $file_path ) ) {
@@ -150,14 +146,10 @@ class Scanner {
 					}
 				}
 
-				$detection_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) );
 				$status_text    = esc_html__( 'Modified File', 'wp-root-guard' );
-
-				// Pindai tanda tangan webshell
 				$malware_indicator = self::scan_file_for_webshell( $file_path );
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Perubahan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Integritas Berkas Berubah', 'wp-root-guard' );
 
-				// Catatan: Untuk berkas inti yang dimodifikasi, kita JANGAN karantina agar website tidak rusak/mati.
 				Logger::log(
 					esc_html__( 'Integritas berkas berubah (Modifikasi)', 'wp-root-guard' ),
 					$file,
@@ -176,6 +168,134 @@ class Scanner {
 			}
 		}
 
+		// ==========================================
+		// C. PEMINDAIAN BERKAS CORE (INTEGRITY CHECK)
+		// ==========================================
+		$checksums = self::get_core_checksums();
+		if ( is_array( $checksums ) && ! empty( $checksums ) ) {
+			foreach ( $checksums as $relative_path => $expected_hash ) {
+				$full_path = ABSPATH . $relative_path;
+
+				// Hanya pindai berkas di wp-admin, wp-includes, dan berkas inti root (abaikan wp-content)
+				if ( 0 === strpos( $relative_path, 'wp-content/' ) ) {
+					continue;
+				}
+
+				// 1. Cek jika Berkas Hilang (Missing Core File)
+				if ( ! file_exists( $full_path ) ) {
+					$threats[] = array(
+						'type'              => 'core_file',
+						'name'              => $relative_path,
+						'path'              => $full_path,
+						'created_time'      => '-',
+						'detection_time'    => $detection_time,
+						'status'            => 'Missing Core File',
+						'malware_indicator' => esc_html__( 'Berkas Inti Hilang', 'wp-root-guard' ),
+					);
+
+					Logger::log(
+						esc_html__( 'Berkas inti WordPress hilang', 'wp-root-guard' ),
+						$relative_path,
+						esc_html__( 'Missing', 'wp-root-guard' )
+					);
+
+				// 2. Cek jika Berkas Modifikasi (Modified Core File)
+				} else {
+					$current_hash = md5_file( $full_path );
+					if ( $current_hash !== $expected_hash ) {
+						
+						// Lewati jika berkas ini adalah berkas pengaturan pengguna yang wajar (seperti wp-config.php tidak masuk checksum, tapi just in case)
+						if ( 'wp-config.php' === $relative_path ) {
+							continue;
+						}
+
+						$malware_indicator = self::scan_file_for_webshell( $full_path );
+						$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Perubahan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Integritas Berkas Berubah', 'wp-root-guard' );
+
+						$threats[] = array(
+							'type'              => 'core_file',
+							'name'              => $relative_path,
+							'path'              => $full_path,
+							'created_time'      => '-',
+							'detection_time'    => $detection_time,
+							'status'            => 'Modified Core File',
+							'malware_indicator' => $malware_label,
+						);
+
+						Logger::log(
+							esc_html__( 'Integritas berkas inti berubah (Modifikasi)', 'wp-root-guard' ),
+							$relative_path,
+							$malware_indicator ? esc_html__( 'Malware Suspicious', 'wp-root-guard' ) : esc_html__( 'Modified', 'wp-root-guard' )
+						);
+					}
+				}
+			}
+
+			// 3. Deteksi File Penyusup (Injected Files) di wp-admin/ & wp-includes/
+			$core_dirs = array( 'wp-admin', 'wp-includes' );
+			foreach ( $core_dirs as $dir ) {
+				$dir_path = ABSPATH . $dir;
+				if ( is_dir( $dir_path ) ) {
+					try {
+						$directory = new \RecursiveDirectoryIterator( $dir_path );
+						$iterator  = new \RecursiveIteratorIterator( $directory );
+						foreach ( $iterator as $fileinfo ) {
+							if ( $fileinfo->isFile() ) {
+								$pathname = $fileinfo->getPathname();
+								$rel_path = str_replace( ABSPATH, '', $pathname );
+								$rel_path = str_replace( '\\', '/', $rel_path ); // Standardisasi Windows path
+
+								// Jika berkas tidak terdaftar di daftar core resmi WordPress.org
+								if ( ! isset( $checksums[ $rel_path ] ) ) {
+									// Lewati berkas penanda karantina kita sendiri jika ada
+									if ( 0 === strpos( basename( $pathname ), '__quarantine_' ) ) {
+										continue;
+									}
+
+									$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
+									$ctime = $fileinfo->getCTime();
+									if ( false !== $ctime ) {
+										$created_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $ctime );
+									}
+
+									$status_text    = esc_html__( 'Suspicious Core Injection', 'wp-root-guard' );
+									$malware_indicator = self::scan_file_for_webshell( $pathname );
+									$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Penyusupan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas Penyusup di Folder Core', 'wp-root-guard' );
+
+									// Karantina otomatis untuk berkas penyusup asing di folder core
+									if ( $settings['enable_auto_quarantine'] ) {
+										$quarantine_name = self::quarantine_core_file( $rel_path );
+										if ( false !== $quarantine_name ) {
+											$status_text = esc_html__( 'Quarantined Automatically', 'wp-root-guard' );
+											$pathname    = ABSPATH . $quarantine_name;
+										}
+									} else {
+										Logger::log(
+											esc_html__( 'Penyusupan berkas core terdeteksi', 'wp-root-guard' ),
+											$rel_path,
+											$malware_indicator ? esc_html__( 'Malware Suspicious', 'wp-root-guard' ) : esc_html__( 'Unknown', 'wp-root-guard' )
+										);
+									}
+
+									$threats[] = array(
+										'type'              => 'core_file',
+										'name'              => $rel_path,
+										'path'              => $pathname,
+										'created_time'      => $created_time,
+										'detection_time'    => $detection_time,
+										'status'            => $status_text,
+										'malware_indicator' => $malware_label,
+									);
+								}
+							}
+						}
+					} catch ( \Exception $e ) {
+						// Abaikan error iterator
+					}
+				}
+			}
+		}
+
 		// Kirim notifikasi jika ada ancaman baru yang belum pernah dilaporkan.
 		self::handle_threat_notifications( $threats );
 
@@ -184,7 +304,7 @@ class Scanner {
 			'last_scan'       => current_time( 'mysql' ),
 			'status'          => empty( $threats ) ? 'safe' : 'threat',
 			'unknown_count'   => count( $threats ),
-			'unknown_folders' => $threats, // Kita tetap gunakan nama index 'unknown_folders' untuk kompatibilitas dashboard/widget
+			'unknown_folders' => $threats,
 		);
 
 		// Simpan hasil scan ke WordPress Options.
@@ -210,6 +330,142 @@ class Scanner {
 	}
 
 	/**
+	 * Mengambil daftar checksums resmi dari WordPress.org API.
+	 *
+	 * @return array|bool Array checksums resmi (relative_path => expected_md5) atau false jika gagal.
+	 */
+	public static function get_core_checksums() {
+		global $wp_version;
+		$locale        = get_locale();
+		$transient_key = 'wp_root_guard_core_checksums';
+		$cached        = get_transient( $transient_key );
+
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$url      = "https://api.wordpress.org/core/checksums/1.0/?version={$wp_version}&locale={$locale}";
+		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
+
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			return false;
+		}
+
+		$body = wp_remote_retrieve_body( $response );
+		$data = json_decode( $body, true );
+
+		if ( ! is_array( $data ) || empty( $data['checksums'] ) ) {
+			return false;
+		}
+
+		// Simpan di cache transient selama 24 jam
+		set_transient( $transient_key, $data['checksums'], DAY_IN_SECONDS );
+
+		return $data['checksums'];
+	}
+
+	/**
+	 * Mengembalikan berkas core WordPress ke keadaan asli dari SVN WordPress.org.
+	 *
+	 * @param string $relative_path Path relatif berkas terhadap ABSPATH (contoh: wp-login.php).
+	 * @return bool True jika berhasil memulihkan berkas core.
+	 */
+	public static function restore_core_file( $relative_path ) {
+		$relative_path = sanitize_text_field( $relative_path );
+		global $wp_version;
+
+		$url = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
+		$response = wp_remote_get( $url, array( 'timeout' => 20 ) );
+
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			return false;
+		}
+
+		$content = wp_remote_retrieve_body( $response );
+		if ( empty( $content ) ) {
+			return false;
+		}
+
+		$local_path = ABSPATH . $relative_path;
+		
+		// Pastikan folder penampung sudah ada
+		$dir = dirname( $local_path );
+		if ( ! is_dir( $dir ) ) {
+			wp_mkdir_p( $dir );
+		}
+
+		// Timpa berkas lokal dengan berkas core resmi
+		if ( false !== @file_put_contents( $local_path, $content ) ) {
+			Logger::log(
+				esc_html__( 'Berkas core WordPress dipulihkan ke asli', 'wp-root-guard' ),
+				$relative_path,
+				esc_html__( 'Restored', 'wp-root-guard' )
+			);
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Membandingkan kode berkas lokal dengan berkas asli resmi dan mengembalikan perbedaannya.
+	 *
+	 * @param string $relative_path Path relatif berkas core.
+	 * @return array Hasil komparasi perbedaan baris kode.
+	 */
+	public static function get_file_diff( $relative_path ) {
+		$relative_path = sanitize_text_field( $relative_path );
+		$local_path    = ABSPATH . $relative_path;
+
+		if ( ! file_exists( $local_path ) ) {
+			return array( 'error' => esc_html__( 'Berkas lokal tidak ditemukan.', 'wp-root-guard' ) );
+		}
+
+		global $wp_version;
+		$url = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
+		
+		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
+		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+			return array( 'error' => esc_html__( 'Gagal mengunduh versi asli berkas dari WordPress.org.', 'wp-root-guard' ) );
+		}
+
+		$original_content = wp_remote_retrieve_body( $response );
+		$local_content    = @file_get_contents( $local_path );
+
+		$original_lines = explode( "\n", str_replace( "\r", "", $original_content ) );
+		$local_lines    = explode( "\n", str_replace( "\r", "", $local_content ) );
+
+		$diff = array();
+		$max  = max( count( $original_lines ), count( $local_lines ) );
+		
+		for ( $i = 0; $i < $max; $i++ ) {
+			$orig_line = isset( $original_lines[$i] ) ? $original_lines[$i] : null;
+			$loc_line  = isset( $local_lines[$i] ) ? $local_lines[$i] : null;
+
+			if ( $orig_line !== $loc_line ) {
+				$line_number = $i + 1;
+				$diff[] = array(
+					'line'     => $line_number,
+					'original' => $orig_line,
+					'local'    => $loc_line,
+				);
+			}
+		}
+
+		return $diff;
+	}
+
+	/**
 	 * Memindai konten berkas PHP untuk mencari fungsi webshell mencurigakan.
 	 *
 	 * @param string $file_path Path absolut berkas.
@@ -220,13 +476,11 @@ class Scanner {
 			return false;
 		}
 
-		// Hanya pindai berkas PHP atau berkas teks lainnya (seperti .htaccess)
 		$ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
 		if ( ! in_array( $ext, array( 'php', 'htaccess', 'html', 'txt' ), true ) ) {
 			return false;
 		}
 
-		// Batasi pembacaan ukuran berkas maksimal 1MB agar cepat
 		if ( filesize( $file_path ) > 1024 * 1024 ) {
 			return false;
 		}
@@ -281,9 +535,7 @@ class Scanner {
 		$quarantine_name = '__quarantine_' . $folder . '_' . time();
 		$quarantine_path = ABSPATH . $quarantine_name;
 
-		// Rename folder
 		if ( @rename( $original_path, $quarantine_path ) ) {
-			// Buat file .htaccess di dalam folder karantina untuk memblokir seluruh web access
 			$htaccess_content  = "<Files *>\n";
 			$htaccess_content .= "  <IfModule mod_authz_core.c>\n";
 			$htaccess_content .= "    Require all denied\n";
@@ -296,7 +548,6 @@ class Scanner {
 
 			@file_put_contents( $quarantine_path . '/.htaccess', $htaccess_content );
 
-			// Simpan ke opsi daftar karantina
 			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
 			if ( ! is_array( $quarantines ) ) {
 				$quarantines = array();
@@ -313,7 +564,6 @@ class Scanner {
 
 			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
 
-			// Log karantina
 			Logger::log(
 				esc_html__( 'Folder berhasil dikarantina otomatis', 'wp-root-guard' ),
 				$folder,
@@ -327,7 +577,7 @@ class Scanner {
 	}
 
 	/**
-	 * Melakukan karantina terhadap berkas asing.
+	 * Melakukan karantina terhadap berkas asing di root.
 	 *
 	 * @param string $filename Nama berkas asing yang akan dikarantina.
 	 * @return string|bool Nama berkas karantina baru jika berhasil, false jika gagal.
@@ -343,9 +593,7 @@ class Scanner {
 		$quarantine_name = '__quarantine_' . $filename . '_' . time();
 		$quarantine_path = ABSPATH . $quarantine_name;
 
-		// Pindahkan berkas
 		if ( @rename( $original_path, $quarantine_path ) ) {
-			// Simpan ke opsi daftar karantina
 			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
 			if ( ! is_array( $quarantines ) ) {
 				$quarantines = array();
@@ -362,10 +610,57 @@ class Scanner {
 
 			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
 
-			// Log karantina
 			Logger::log(
 				esc_html__( 'Berkas berhasil dikarantina otomatis', 'wp-root-guard' ),
 				$filename,
+				esc_html__( 'Quarantined', 'wp-root-guard' )
+			);
+
+			return $quarantine_name;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Melakukan karantina berkas penyusup asing di dalam folder core (wp-admin/wp-includes).
+	 *
+	 * @param string $rel_path Path relatif berkas asing di folder core (contoh: wp-includes/malware.php).
+	 * @return string|bool Nama berkas karantina jika berhasil.
+	 */
+	public static function quarantine_core_file( $rel_path ) {
+		$rel_path      = sanitize_text_field( $rel_path );
+		$original_path = ABSPATH . $rel_path;
+
+		if ( ! file_exists( $original_path ) || is_dir( $original_path ) ) {
+			return false;
+		}
+
+		// Buat nama karantina unik dengan meratakan path pemisah '/' menjadi '_'
+		$clean_name      = str_replace( '/', '_', $rel_path );
+		$quarantine_name = '__quarantine_' . $clean_name . '_' . time();
+		$quarantine_path = ABSPATH . $quarantine_name;
+
+		if ( @rename( $original_path, $quarantine_path ) ) {
+			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
+			if ( ! is_array( $quarantines ) ) {
+				$quarantines = array();
+			}
+
+			$quarantines[] = array(
+				'type'            => 'file',
+				'original_name'   => $rel_path,
+				'quarantine_name' => $quarantine_name,
+				'original_path'   => $original_path,
+				'quarantine_path' => $quarantine_path,
+				'quarantine_time' => current_time( 'mysql' ),
+			);
+
+			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
+
+			Logger::log(
+				esc_html__( 'Berkas penyusup core berhasil dikarantina otomatis', 'wp-root-guard' ),
+				$rel_path,
 				esc_html__( 'Quarantined', 'wp-root-guard' )
 			);
 
@@ -423,12 +718,15 @@ class Scanner {
 			}
 		}
 
-		// Rename kembali ke nama asli
+		// Pastikan direktori tujuan ada (berguna jika karantina berasal dari subfolder core)
+		$dir = dirname( $original_path );
+		if ( ! is_dir( $dir ) ) {
+			wp_mkdir_p( $dir );
+		}
+
 		if ( @rename( $quarantine_path, $original_path ) ) {
-			// Masukkan kembali ke Whitelist Kustom secara otomatis
 			Settings::add_to_whitelist( $item['original_name'] );
 
-			// Hapus dari data karantina
 			unset( $quarantines[ $found_key ] );
 			update_option( 'wp_root_guard_quarantined_folders', array_values( $quarantines ) );
 
@@ -484,7 +782,6 @@ class Scanner {
 			}
 		}
 
-		// Hapus dari database
 		unset( $quarantines[ $found_key ] );
 		update_option( 'wp_root_guard_quarantined_folders', array_values( $quarantines ) );
 
@@ -519,40 +816,6 @@ class Scanner {
 	}
 
 	/**
-	 * Mengirim notifikasi Telegram ke Chat ID tertentu.
-	 *
-	 * @param string $token Token bot Telegram.
-	 * @param string $chat_id Chat ID tujuan.
-	 * @param string $message Isi pesan text.
-	 * @return bool True jika berhasil terkirim.
-	 */
-	public static function send_telegram_message( $token, $chat_id, $message ) {
-		if ( empty( $token ) || empty( $chat_id ) ) {
-			return false;
-		}
-
-		$url  = "https://api.telegram.org/bot{$token}/sendMessage";
-		$args = array(
-			'body'    => array(
-				'chat_id'                  => $chat_id,
-				'text'                     => $message,
-				'parse_mode'               => 'Markdown',
-				'disable_web_page_preview' => true,
-			),
-			'timeout' => 10,
-		);
-
-		$response = wp_remote_post( $url, $args );
-
-		if ( is_wp_error( $response ) ) {
-			return false;
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		return 200 === $code;
-	}
-
-	/**
 	 * Mengirim notifikasi email dan Telegram jika ada ancaman baru yang belum dinotifikasi.
 	 *
 	 * @param array $threats Daftar ancaman terdeteksi saat ini.
@@ -560,13 +823,11 @@ class Scanner {
 	private static function handle_threat_notifications( $threats ) {
 		$settings = Settings::get_settings();
 
-		// Jika email maupun Telegram tidak diaktifkan, abaikan.
 		if ( ! $settings['enable_email_notifications'] && ! $settings['enable_telegram_notifications'] ) {
 			return;
 		}
 
 		if ( empty( $threats ) ) {
-			// Jika sudah aman (tidak ada ancaman aktif), bersihkan daftar notifikasi
 			delete_option( 'wp_root_guard_notified_threats' );
 			return;
 		}
@@ -578,7 +839,6 @@ class Scanner {
 
 		$new_threats = array();
 		foreach ( $threats as $threat ) {
-			// Kita bedakan dengan type:name
 			$threat_key = $threat['type'] . ':' . $threat['name'];
 			if ( ! in_array( $threat_key, $notified, true ) ) {
 				$new_threats[] = $threat;
@@ -586,12 +846,10 @@ class Scanner {
 			}
 		}
 
-		// Jika tidak ada ancaman baru yang belum dinotifikasi, keluar.
 		if ( empty( $new_threats ) ) {
 			return;
 		}
 
-		// Update daftar yang sudah dinotifikasi
 		update_option( 'wp_root_guard_notified_threats', $notified );
 
 		$site_name = get_bloginfo( 'name' );
@@ -606,7 +864,7 @@ class Scanner {
 			$email_body .= sprintf( /* translators: %1$d: jumlah temuan, %2$s: URL situs */ esc_html__( 'WP Root Guard mendeteksi %1$d berkas/folder asing atau dimodifikasi baru pada root directory situs Anda (%2$s):', 'wp-root-guard' ), $count, $site_url ) . "\r\n\r\n";
 
 			foreach ( $new_threats as $threat ) {
-				$type_label   = ( 'folder' === $threat['type'] ) ? esc_html__( 'Folder Asing', 'wp-root-guard' ) : esc_html__( 'Berkas', 'wp-root-guard' );
+				$type_label   = ( 'folder' === $threat['type'] ) ? esc_html__( 'Folder Asing', 'wp-root-guard' ) : esc_html__( 'Berkas/Integritas Core', 'wp-root-guard' );
 				$status_label = ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $threat['status'] ) ? esc_html__( 'Sudah Dikarantina Otomatis', 'wp-root-guard' ) : esc_html__( 'Belum Dikarantina', 'wp-root-guard' );
 				
 				$email_body .= "- " . sprintf( /* translators: %1$s: tipe, %2$s: nama */ esc_html__( '%1$s: %2$s', 'wp-root-guard' ), $type_label, $threat['name'] ) . "\r\n";
