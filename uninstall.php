@@ -26,6 +26,8 @@ delete_option( 'wp_root_guard_whitelist' );
 delete_option( 'wp_root_guard_logs' );
 delete_option( 'wp_root_guard_last_scan' );
 delete_option( 'wp_root_guard_unknown_folders' );
+delete_option( 'wp_root_guard_quarantined_folders' );
+delete_option( 'wp_root_guard_notified_threats' );
 
 // 3. Hapus folder baseline dan isinya.
 $wp_uploads  = wp_upload_dir();

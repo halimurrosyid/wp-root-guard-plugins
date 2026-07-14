@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, malware, scanner
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,12 +25,18 @@ Dengan pendekatan non-rekursif, plugin ini hanya memindai direktori tingkat pert
 == Frequently Asked Questions ==
 
 = Apakah plugin ini melakukan pemindaian file? =
-Tidak, versi pertama ini hanya mendeteksi folder baru yang mencurigakan di direktori root tingkat pertama.
+Tidak, versi ini hanya mendeteksi folder baru yang mencurigakan di direktori root tingkat pertama untuk menjaga performa server tetap maksimal.
 
 = Seberapa sering pemindaian otomatis berjalan? =
 Secara default, pemindaian berjalan setiap 5 menit sekali menggunakan sistem WP Cron bawaan WordPress.
 
 == Changelog ==
+
+= 1.1.0 =
+* Penambahan fitur Karantina Otomatis (Auto-Quarantine) dengan penguncian akses .htaccess.
+* Penambahan sistem Notifikasi Peringatan Instan ke Telegram Bot API dan Email Administrator.
+* Penambahan Tab Pengaturan (Settings) di dasbor admin.
+* Modifikasi modul pemindaian agar mengabaikan direktori yang sedang dikarantina.
 
 = 1.0.1 =
 * Update informasi pembuat dan situs resmi (Mujaddid Halimurrosyid - indahweb.com).

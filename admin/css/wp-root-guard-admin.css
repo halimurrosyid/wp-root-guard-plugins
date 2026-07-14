@@ -9,13 +9,47 @@
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 }
 
+/* Tab Navigation */
+.rg-nav-tabs {
+	margin-top: 15px !important;
+	margin-bottom: 20px !important;
+	border-bottom: 1px solid #cbd5e1 !important;
+	padding-bottom: 0 !important;
+}
+
+.rg-nav-tabs .nav-tab {
+	font-size: 14px !important;
+	font-weight: 600 !important;
+	padding: 8px 16px !important;
+	border: 1px solid transparent !important;
+	border-bottom: none !important;
+	background: transparent !important;
+	color: #64748b !important;
+	border-radius: 6px 6px 0 0 !important;
+	margin-right: 4px !important;
+	transition: all 0.15s ease;
+}
+
+.rg-nav-tabs .nav-tab:hover {
+	color: #0f172a !important;
+	background: #f1f5f9 !important;
+}
+
+.rg-nav-tabs .nav-tab-active {
+	color: #2563eb !important;
+	background: #ffffff !important;
+	border-color: #cbd5e1 #cbd5e1 transparent !important;
+	border-bottom: 2px solid #ffffff !important;
+	position: relative;
+	top: 1px;
+}
+
 /* Grid Layout */
 .rg-dashboard-grid {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 20px;
 	margin-bottom: 20px;
-	margin-top: 15px;
 }
 
 @media (max-width: 782px) {
@@ -32,6 +66,7 @@
 	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 	overflow: hidden;
 	transition: transform 0.2s ease, box-shadow 0.2s ease;
+	margin-bottom: 25px;
 }
 
 .rg-card:hover {
@@ -65,7 +100,7 @@
 }
 
 .rg-status-safe {
-	border-top: 5px solid #10b981; /* Emeral Green */
+	border-top: 5px solid #10b981; /* Emerald Green */
 	background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100px);
 }
 
@@ -227,4 +262,141 @@ code {
 	border-radius: 4px;
 	font-family: Consolas, Monaco, monospace;
 	font-size: 13px;
+}
+
+/* Form & Settings Tab Styling */
+.rg-form-card {
+	max-width: 800px;
+}
+
+.rg-settings-section {
+	margin-bottom: 30px;
+}
+
+.rg-settings-section h3 {
+	font-size: 16px;
+	color: #0f172a;
+	margin-bottom: 8px;
+	font-weight: 600;
+}
+
+.rg-settings-section hr {
+	border: none;
+	border-top: 1px solid #e2e8f0;
+	margin-bottom: 15px;
+}
+
+.rg-form-group {
+	margin-bottom: 15px;
+}
+
+.rg-form-group label {
+	display: block;
+	margin-bottom: 6px;
+	color: #334155;
+}
+
+.rg-form-group input[type="text"],
+.rg-form-group input[type="email"] {
+	border: 1px solid #cbd5e1;
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 14px;
+	color: #0f172a;
+	transition: border-color 0.15s ease;
+	width: 100%;
+	max-width: 400px;
+	vertical-align: middle;
+	margin-right: 8px;
+}
+
+.rg-form-group input[type="text"]:focus,
+.rg-form-group input[type="email"]:focus {
+	border-color: #3b82f6;
+	outline: none;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.rg-field-desc {
+	color: #64748b;
+	font-size: 12px;
+	margin: 5px 0 0 0;
+	line-height: 1.5;
+}
+
+.rg-form-submit {
+	margin-top: 25px;
+	padding-top: 20px;
+	border-top: 1px solid #e2e8f0;
+}
+
+.rg-sub-fields {
+	margin-left: 54px;
+	padding-left: 15px;
+	border-left: 2px solid #e2e8f0;
+	animation: slideDown 0.25s ease-out;
+}
+
+.rg-sub-fields.hidden {
+	display: none !important;
+}
+
+@keyframes slideDown {
+	from { opacity: 0; transform: translateY(-5px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+/* Switch Toggle Slider Styling */
+.rg-switch-label {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 12px;
+	cursor: pointer;
+	font-size: 14px;
+	color: #0f172a;
+	user-select: none;
+}
+
+.rg-switch-label input[type="checkbox"] {
+	opacity: 0;
+	width: 0;
+	height: 0;
+	margin: 0;
+	position: absolute;
+}
+
+.rg-switch-slider {
+	position: relative;
+	display: inline-block;
+	width: 42px;
+	height: 24px;
+	background-color: #cbd5e1;
+	border-radius: 34px;
+	transition: background-color 0.2s;
+}
+
+.rg-switch-slider:before {
+	position: absolute;
+	content: "";
+	height: 18px;
+	width: 18px;
+	left: 3px;
+	bottom: 3px;
+	background-color: white;
+	border-radius: 50%;
+	transition: transform 0.2s;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.rg-switch-label input[type="checkbox"]:checked + .rg-switch-slider {
+	background-color: #2563eb;
+}
+
+.rg-switch-label input[type="checkbox"]:checked + .rg-switch-slider:before {
+	transform: translateX(18px);
+}
+
+.rg-switch-label input[type="checkbox"]:focus + .rg-switch-slider {
+	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }

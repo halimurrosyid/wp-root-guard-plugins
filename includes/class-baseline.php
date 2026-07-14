@@ -133,7 +133,12 @@ class Baseline {
 				$iterator = new \DirectoryIterator( $path );
 				foreach ( $iterator as $fileinfo ) {
 					if ( $fileinfo->isDir() && ! $fileinfo->isDot() ) {
-						$folders[] = $fileinfo->getFilename();
+						$foldername = $fileinfo->getFilename();
+						// Jangan masukkan folder karantina ke daftar folder root aktif
+						if ( 0 === strpos( $foldername, '__quarantine_' ) ) {
+							continue;
+						}
+						$folders[] = $foldername;
 					}
 				}
 			} catch ( \Exception $e ) {
