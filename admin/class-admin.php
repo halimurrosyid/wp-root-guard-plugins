@@ -591,7 +591,7 @@ class Admin {
 				<div class="rg-dashboard-grid">
 					
 					<!-- STATUS CARD -->
-					<div class="rg-card rg-status-card <?php echo 'safe' === $results['status'] ? 'rg-status-safe' : 'rg-status-threat'; ?>">
+					<div id="rg-status-card" class="rg-card rg-status-card <?php echo 'safe' === $results['status'] ? 'rg-status-safe' : 'rg-status-threat'; ?>">
 						<div class="rg-card-header">
 							<h2><?php esc_html_e( 'Status Perlindungan', 'wp-root-guard' ); ?></h2>
 						</div>
@@ -611,7 +611,7 @@ class Admin {
 					</div>
 
 					<!-- SUMMARY CARD -->
-					<div class="rg-card rg-summary-card">
+					<div id="rg-summary-card" class="rg-card rg-summary-card">
 						<div class="rg-card-header">
 							<h2><?php esc_html_e( 'Ringkasan Sistem', 'wp-root-guard' ); ?></h2>
 						</div>
@@ -644,10 +644,38 @@ class Admin {
 							</table>
 						</div>
 					</div>
+
+					<!-- INLINE SCANNER PANEL -->
+					<div id="rg-scan-inline-card" class="rg-card hidden" style="grid-column: 1 / -1; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #ffffff; border: none; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); margin-bottom: 0;">
+						<div class="rg-card-body" style="padding: 40px 30px; text-align: center;">
+							<div class="rg-scanner-shield">
+								<span class="rg-shield-icon">🛡️</span>
+								<div class="rg-pulse-wave wave1"></div>
+								<div class="rg-pulse-wave wave2"></div>
+							</div>
+							
+							<h2 style="font-size: 22px; font-weight: 800; color: #ffffff; margin: 25px 0 10px 0; letter-spacing: 0.5px;">
+								<?php esc_html_e( 'Memindai Direktori Root & Berkas Core...', 'wp-root-guard' ); ?>
+							</h2>
+							
+							<div id="rg-scan-percentage" style="font-size: 44px; font-weight: 900; color: #3b82f6; margin-bottom: 20px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
+								0%
+							</div>
+
+							<div style="background-color: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 20px; overflow: hidden; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto; border: 1px solid rgba(255, 255, 255, 0.05);">
+								<div id="rg-scan-bar" style="background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%); width: 0%; height: 100%; border-radius: 20px; transition: width 0.1s ease; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
+							</div>
+
+							<div style="font-size: 13px; font-weight: 600; color: #94a3b8; min-height: 20px; margin-bottom: 10px;"><?php esc_html_e( 'Sedang memproses:', 'wp-root-guard' ); ?></div>
+							<div id="rg-scan-current-item" style="font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; background-color: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); min-height: 20px; max-width: 600px; margin-left: auto; margin-right: auto;">
+								-
+							</div>
+						</div>
+					</div>
 				</div>
 
 				<!-- PANEL TOMBOL UTAMA -->
-				<div class="rg-actions-bar">
+				<div id="rg-actions-bar" class="rg-actions-bar">
 					<button type="button" class="button button-primary button-large" onclick="startDynamicScan()">
 						<?php esc_html_e( 'Pindai Sekarang (Scan Now)', 'wp-root-guard' ); ?>
 					</button>
@@ -1001,44 +1029,22 @@ class Admin {
 					</div>
 				</div>
 
-				<!-- MODAL DIALOG DYNAMIC SCANNING PROCESS -->
-				<div id="rg-scan-overlay" class="rg-modal-overlay hidden" style="background-color: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); z-index: 999999;">
-					<div class="rg-modal-container" style="max-width: 500px; text-align: center; border: none; border-radius: 16px; overflow: hidden; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #ffffff;">
-						<div class="rg-modal-body" style="padding: 40px 30px;">
-							<div class="rg-scanner-shield">
-								<span class="rg-shield-icon">🛡️</span>
-								<div class="rg-pulse-wave wave1"></div>
-								<div class="rg-pulse-wave wave2"></div>
-							</div>
-							
-							<h2 style="font-size: 24px; font-weight: 800; color: #ffffff; margin: 25px 0 10px 0; letter-spacing: 0.5px;">
-								<?php esc_html_e( 'Memindai Direktori Root...', 'wp-root-guard' ); ?>
-							</h2>
-							
-							<div id="rg-scan-percentage" style="font-size: 48px; font-weight: 900; color: #3b82f6; margin-bottom: 20px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
-								0%
-							</div>
-
-							<div style="background-color: rgba(255, 255, 255, 0.1); height: 10px; border-radius: 20px; overflow: hidden; margin-bottom: 25px; border: 1px solid rgba(255, 255, 255, 0.05);">
-								<div id="rg-scan-bar" style="background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%); width: 0%; height: 100%; border-radius: 20px; transition: width 0.1s ease; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
-							</div>
-
-							<div style="font-size: 14px; font-weight: 600; color: #94a3b8; min-height: 20px; margin-bottom: 10px;"><?php esc_html_e( 'Sedang memproses:', 'wp-root-guard' ); ?></div>
-							<div id="rg-scan-current-item" style="font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; background-color: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); min-height: 20px;">
-								-
-							</div>
-						</div>
-					</div>
-				</div>
-
 				<script type="text/javascript">
 					function startDynamicScan() {
-						var overlay = document.getElementById('rg-scan-overlay');
+						var statusCard = document.getElementById('rg-status-card');
+						var summaryCard = document.getElementById('rg-summary-card');
+						var actionsBar = document.getElementById('rg-actions-bar');
+						var inlineCard = document.getElementById('rg-scan-inline-card');
+
 						var percentText = document.getElementById('rg-scan-percentage');
 						var progressBar = document.getElementById('rg-scan-bar');
 						var currentItemText = document.getElementById('rg-scan-current-item');
 						
-						overlay.classList.remove('hidden');
+						// Sembunyikan panel dashboard lama secara halus dan tampilkan scan inline card
+						if (statusCard) statusCard.style.display = 'none';
+						if (summaryCard) summaryCard.style.display = 'none';
+						if (actionsBar) actionsBar.style.display = 'none';
+						inlineCard.classList.remove('hidden');
 
 						var data = {
 							action: 'wp_root_guard_get_scan_queue',
