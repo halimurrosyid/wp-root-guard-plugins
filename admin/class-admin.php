@@ -33,6 +33,9 @@ class Admin {
 		add_action( 'admin_init', array( $this, 'handle_admin_actions' ) );
 		add_action( 'admin_notices', array( $this, 'render_threat_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_styles' ) );
+
+		// Tambahkan link "Settings" pada daftar plugin WordPress.
+		add_filter( 'plugin_action_links_' . plugin_basename( WP_ROOT_GUARD_FILE ), array( $this, 'add_action_links' ) );
 	}
 
 	/**
@@ -65,6 +68,18 @@ class Admin {
 			array(),
 			WP_ROOT_GUARD_VERSION
 		);
+	}
+
+	/**
+	 * Menambahkan tautan "Settings" ke baris plugin di halaman Plugins WordPress.
+	 *
+	 * @param array $links Array tautan aksi plugin bawaan.
+	 * @return array Array tautan yang telah ditambahkan.
+	 */
+	public function add_action_links( $links ) {
+		$settings_link = '<a href="' . admin_url( 'index.php?page=wp-root-guard&tab=settings' ) . '">' . esc_html__( 'Settings', 'wp-root-guard' ) . '</a>';
+		array_unshift( $links, $settings_link );
+		return $links;
 	}
 
 	/**
