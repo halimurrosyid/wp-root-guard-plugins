@@ -42,6 +42,13 @@ class Plugin {
 	private $dashboard;
 
 	/**
+	 * Instansi Blocker IP Penyerang.
+	 *
+	 * @var Blocker
+	 */
+	private $blocker;
+
+	/**
 	 * Instansi GitHub Updater.
 	 *
 	 * @var Updater
@@ -53,6 +60,7 @@ class Plugin {
 	 */
 	public function __construct() {
 		$this->cron    = new Cron();
+		$this->blocker = new Blocker();
 		$this->updater = new Updater( WP_ROOT_GUARD_FILE );
 
 		if ( is_admin() ) {
@@ -67,6 +75,9 @@ class Plugin {
 	public function run() {
 		// Pemuatan translasi.
 		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
+
+		// Inisialisasi IP Blocker.
+		$this->blocker->init();
 
 		// Inisialisasi GitHub Updater.
 		$this->updater->init();

@@ -274,6 +274,25 @@ class Admin {
 				wp_safe_redirect( add_query_arg( 'message', 'logs_cleared', $redirect_url ) );
 				exit;
 
+			case 'block_ip':
+				$ip     = isset( $_POST['ip_address'] ) ? sanitize_text_field( $_POST['ip_address'] ) : '';
+				$reason = isset( $_POST['ip_reason'] ) ? sanitize_text_field( $_POST['ip_reason'] ) : '';
+				if ( ! empty( $ip ) ) {
+					Blocker::block_ip( $ip, $reason );
+					wp_safe_redirect( add_query_arg( 'message', 'ip_blocked', $redirect_url ) );
+					exit;
+				}
+				break;
+
+			case 'unblock_ip':
+				$ip = isset( $_POST['target_folder'] ) ? sanitize_text_field( $_POST['target_folder'] ) : '';
+				if ( ! empty( $ip ) ) {
+					Blocker::unblock_ip( $ip );
+					wp_safe_redirect( add_query_arg( 'message', 'ip_unblocked', $redirect_url ) );
+					exit;
+				}
+				break;
+
 			case 'bulk_action':
 				$action_type = isset( $_POST['bulk_action_type'] ) ? sanitize_text_field( $_POST['bulk_action_type'] ) : '';
 				$items       = isset( $_POST['bulk_items'] ) && is_array( $_POST['bulk_items'] ) ? array_map( 'sanitize_text_field', $_POST['bulk_items'] ) : array();
@@ -513,6 +532,12 @@ class Admin {
 				break;
 			case 'file_deleted':
 				$notice_text = esc_html__( 'Berkas asing/penyusup berhasil dihapus secara permanen dari server.', 'wp-root-guard' );
+				break;
+			case 'ip_blocked':
+				$notice_text = esc_html__( 'Alamat IP penyerang berhasil diblokir dan aturan .htaccess diperbarui.', 'wp-root-guard' );
+				break;
+			case 'ip_unblocked':
+				$notice_text = esc_html__( 'Blokir alamat IP berhasil dibuka.', 'wp-root-guard' );
 				break;
 			case 'bulk_trusted':
 				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
@@ -1117,6 +1142,58 @@ class Admin {
 					</div>
 				</div>
 
+				<!-- TABEL 5: DAFTAR IP TERBLOKIR OTOMATIS & HTACCESS BLOCKER -->
+				<?php $blocked_ips = Blocker::get_blocked_ips(); ?>
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+						<h2>🚫 <?php esc_html_e( 'Proteksi IP Terblokir & Webshell Access Blocker (.htaccess)', 'wp-root-guard' ); ?></h2>
+					</div>
+					<div class="rg-card-body">
+						<!-- FORM TAMBAH MANUAL IP BLOCK -->
+						<form method="post" action="" style="margin-bottom: 20px; display: flex; gap: 10px; align-items: center; background: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #cbd5e1;">
+							<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
+							<input type="hidden" name="rg_action" value="block_ip">
+							<strong>➕ <?php esc_html_e( 'Blokir IP Manual:', 'wp-root-guard' ); ?></strong>
+							<input type="text" name="ip_address" placeholder="Contoh: 192.168.1.100" class="regular-text" required style="max-width: 200px;">
+							<input type="text" name="ip_reason" placeholder="Alasan (Opsional)" class="regular-text" style="max-width: 250px;">
+							<button type="submit" class="button button-secondary">
+								🚫 <?php esc_html_e( 'Blokir IP Ini', 'wp-root-guard' ); ?>
+							</button>
+						</form>
+
+						<?php if ( empty( $blocked_ips ) ) : ?>
+							<div class="rg-empty-message">
+								<p>✅ <?php esc_html_e( 'Tidak ada IP penyerang yang diblokir saat ini.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Alamat IP Penyerang', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Alasan Pemblokiran', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Di-block', 'wp-root-guard' ); ?></th>
+										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $blocked_ips as $item ) : ?>
+										<tr>
+											<td><strong class="text-danger"><code><?php echo esc_html( $item['ip'] ); ?></code></strong></td>
+											<td><?php echo esc_html( $item['reason'] ); ?></td>
+											<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item['time'] ) ) ); ?></td>
+											<td>
+												<button type="button" class="button button-small button-secondary" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membuka blokir IP ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('unblock_ip', '<?php echo esc_js( $item['ip'] ); ?>'); }">
+													🔓 <?php esc_html_e( 'Unblock IP', 'wp-root-guard' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
+
 				<!-- WHITELIST USER -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
@@ -1360,6 +1437,16 @@ class Admin {
 									</label>
 									<p class="rg-field-desc">
 										<?php esc_html_e( 'Folder uploads seharusnya hanya berisi berkas media (gambar/dokumen). Mengaktifkan opsi ini akan mendeteksi dan mengisolasi setiap berkas eksekusi PHP atau webshell yang disisipkan di dalam direktori wp-content/uploads/.', 'wp-root-guard' ); ?>
+									</p>
+								</div>
+								<div class="rg-form-group" style="margin-top: 16px;">
+									<label class="rg-switch-label">
+										<input type="checkbox" name="enable_ip_blocker" value="1" <?php checked( $settings['enable_ip_blocker'], true ); ?>>
+										<span class="rg-switch-slider"></span>
+										<strong><?php esc_html_e( 'Aktifkan Blocker Akses Webshell & IP Penyerang (.htaccess)', 'wp-root-guard' ); ?></strong>
+									</label>
+									<p class="rg-field-desc">
+										<?php esc_html_e( 'Otomatis mencegat percobaan eksekusi PHP di folder uploads dan query string berbahaya, serta memblokir IP penyerang di .htaccess.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>

@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.8.0 (23 Juli 2026)
+- **Fitur Baru**: **Blocker Akses Webshell & IP Penyerang (.htaccess)** — Sistem pencegatan otomatis untuk percobaan eksekusi berkas PHP di folder media `uploads/` dan query string webshell injection, serta pemblokiran otomatis IP penyerang di berkas root `.htaccess` dengan penguncian instant 403 Forbidden.
+
 ### v1.7.0 (23 Juli 2026)
 - **Fitur Baru**: **Fitur Aksi Massal (Bulk Actions)** — Penambahan checkbox checklist pada setiap tabel temuan scan dan toolbar *Bulk Action Bar* untuk mengeksekusi penanganan massal (*Trust*, *Karantina*, atau *Hapus Permanen*) pada banyak ancaman sekaligus dengan 1-klik.
 
