@@ -671,6 +671,55 @@ class Scanner {
 	}
 
 	/**
+	 * Menghapus berkas asing atau penyusup secara langsung dan permanen dari server.
+	 *
+	 * @param string $rel_path Path relatif berkas dari ABSPATH.
+	 * @return bool True jika berhasil dihapus.
+	 */
+	public static function delete_file_directly( $rel_path ) {
+		$rel_path  = sanitize_text_field( $rel_path );
+		$file_path = ABSPATH . $rel_path;
+
+		// Hindari penyeberangan direktori atau berkas tidak ada.
+		if ( false !== strpos( $rel_path, '..' ) || ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+			return false;
+		}
+
+		if ( @unlink( $file_path ) || ( function_exists( 'wp_delete_file' ) && wp_delete_file( $file_path ) ) ) {
+			// Hapus dari daftar aktif yang terdeteksi di database.
+			$active_files = get_option( 'wp_root_guard_active_files', array() );
+			if ( is_array( $active_files ) ) {
+				foreach ( $active_files as $key => $file ) {
+					if ( isset( $file['name'] ) && $file['name'] === $rel_path ) {
+						unset( $active_files[ $key ] );
+					}
+				}
+				update_option( 'wp_root_guard_active_files', array_values( $active_files ) );
+			}
+
+			$active_core = get_option( 'wp_root_guard_active_core_threats', array() );
+			if ( is_array( $active_core ) ) {
+				foreach ( $active_core as $key => $file ) {
+					if ( isset( $file['name'] ) && $file['name'] === $rel_path ) {
+						unset( $active_core[ $key ] );
+					}
+				}
+				update_option( 'wp_root_guard_active_core_threats', array_values( $active_core ) );
+			}
+
+			Logger::log(
+				esc_html__( 'Berkas asing dihapus secara permanen', 'wp-root-guard' ),
+				$rel_path,
+				esc_html__( 'Deleted', 'wp-root-guard' )
+			);
+
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * Mengembalikan folder/berkas yang dikarantina ke tempat semula.
 	 *
 	 * @param string $quarantine_name Nama folder/berkas karantina.

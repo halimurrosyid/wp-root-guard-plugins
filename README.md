@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.4.3 (23 Juli 2026)
+- **Fitur Baru**: Penambahan tombol aksi **`🗑️ Hapus`** (Delete Directly) pada tabel Integritas Core dan Berkas Asing Root untuk memfasilitasi penghapusan langsung file penyusup/sampah tanpa perlu dikarantina terlebih dahulu.
+
 ### v1.4.2 (23 Juli 2026)
 - **Penyempurnaan**: Pembaruan URL informasi plugin dan tautan situs pembuat ke halaman profil staf Telkom University.
 

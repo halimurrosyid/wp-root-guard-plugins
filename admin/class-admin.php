@@ -241,6 +241,20 @@ class Admin {
 				}
 				break;
 
+			case 'delete_file_directly':
+				$file = isset( $_POST['folder'] ) ? sanitize_text_field( $_POST['folder'] ) : '';
+				if ( ! empty( $file ) ) {
+					$success = Scanner::delete_file_directly( $file );
+					if ( $success ) {
+						Scanner::perform_scan();
+						wp_safe_redirect( add_query_arg( 'message', 'file_deleted', $redirect_url ) );
+					} else {
+						wp_safe_redirect( add_query_arg( 'message', 'delete_failed', $redirect_url ) );
+					}
+					exit;
+				}
+				break;
+
 			case 'fix_core_file':
 				$file = isset( $_POST['folder'] ) ? sanitize_text_field( $_POST['folder'] ) : '';
 				if ( ! empty( $file ) ) {
@@ -454,6 +468,13 @@ class Admin {
 			case 'quarantine_failed':
 				$notice_class = 'notice-error';
 				$notice_text  = esc_html__( 'Gagal mengkarantina berkas. Pastikan perizinan berkas di server Anda benar.', 'wp-root-guard' );
+				break;
+			case 'file_deleted':
+				$notice_text = esc_html__( 'Berkas asing/penyusup berhasil dihapus secara permanen dari server.', 'wp-root-guard' );
+				break;
+			case 'delete_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Gagal menghapus berkas. Pastikan perizinan berkas (file permissions) di server Anda benar.', 'wp-root-guard' );
 				break;
 			case 'core_fixed':
 				$notice_text = esc_html__( 'Berkas core WordPress berhasil diperbaiki ke keadaan asli.', 'wp-root-guard' );
@@ -815,6 +836,9 @@ class Admin {
 													<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas penyusup core ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
 														🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
 													</button>
+													<button type="button" class="button button-small button-link-delete" style="color: #dc2626; border-color: #fca5a5; text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus berkas penyusup ini secara PERMANEN dari server?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_file_directly', '<?php echo esc_js( $file['name'] ); ?>'); }">
+														🗑️ <?php esc_html_e( 'Hapus', 'wp-root-guard' ); ?>
+													</button>
 												<?php else : ?>
 													<a href="?page=wp-root-guard&tab=dashboard&view_diff=<?php echo urlencode( $file['name'] ); ?>" class="button button-small button-secondary">
 														🔍 <?php esc_html_e( 'Bandingkan Kode', 'wp-root-guard' ); ?>
@@ -885,6 +909,9 @@ class Admin {
 												</button>
 												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas asing ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
 													🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="color: #dc2626; border-color: #fca5a5; text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus berkas asing ini secara PERMANEN dari server?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_file_directly', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🗑️ <?php esc_html_e( 'Hapus', 'wp-root-guard' ); ?>
 												</button>
 											</td>
 										</tr>
