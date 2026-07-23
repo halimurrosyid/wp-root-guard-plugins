@@ -19,6 +19,15 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.4.2 (23 Juli 2026)
+- **Penyempurnaan**: Pembaruan URL informasi plugin dan tautan situs pembuat ke halaman profil staf Telkom University.
+
+### v1.4.1 (23 Juli 2026)
+- **Perbaikan**: Penyempurnaan sistem pembaruan otomatis (Auto-Updater) langsung dari dasbor WordPress via filter `site_transient_update_plugins` untuk injeksi notifikasi versi baru secara instan.
+
+### v1.4.0 (14 Juli 2026)
+- **Penyempurnaan**: Kepatuhan penuh terhadap standar koding WordPress (WPCS) termasuk *prefixing* nama fungsi global (`wp_root_guard_*`), pembersihan *output escaping*, dan penambahan anotasi Linter.
+
 ### v1.3.0 (14 Juli 2026)
 - **Fitur Baru**: Integrasi dengan API Checksums resmi WordPress.org untuk verifikasi keaslian berkas core.
 - **Fitur Baru**: Deteksi berkas core yang dirubah (*Modified*), hilang (*Missing*), atau berkas asing penyusup (*Injection*) di folder `wp-admin` dan `wp-includes`.

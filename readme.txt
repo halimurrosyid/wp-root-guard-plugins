@@ -32,6 +32,15 @@ Tidak, karena wp-content berisi berkas dinamis tema, plugin, dan media unggahan 
 
 == Changelog ==
 
+= 1.4.2 =
+* Pembaruan URL informasi plugin dan tautan situs pembuat ke profil Telkom University.
+
+= 1.4.1 =
+* Perbaikan dan penyempurnaan sistem pembaruan otomatis (Auto-Updater) langsung dari dasbor WordPress via filter site_transient_update_plugins.
+
+= 1.4.0 =
+* Penyesuaian penuh dengan WordPress Coding Standards (WPCS): prefixing fungsi global, escaping output keamanan, dan anotasi phpcs.
+
 = 1.3.0 =
 * Penambahan verifikasi integritas berkas core via API Checksums resmi WordPress.org.
 * Deteksi berkas core yang dirubah (Modified), hilang (Missing), atau disisipkan (Injected) di folder wp-admin dan wp-includes.
