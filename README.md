@@ -50,5 +50,5 @@
 ## Hak Cipta & Lisensi
 
 - Pembuat: **Mujaddid Halimurrosyid**
-- Situs Web: [indahweb.com](https://indahweb.com)
+- Situs Web: [ajidmujaddid.staff.telkomuniversity.ac.id](https://ajidmujaddid.staff.telkomuniversity.ac.id/)
 - Lisensi: GPL v2 atau yang lebih baru.

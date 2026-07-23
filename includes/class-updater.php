@@ -143,7 +143,7 @@ class Updater {
 		$obj->name           = 'WP Root Guard';
 		$obj->slug           = $args->slug;
 		$obj->version        = $remote_version;
-		$obj->author         = '<a href="https://indahweb.com" target="_blank">Mujaddid Halimurrosyid</a>';
+		$obj->author         = '<a href="https://ajidmujaddid.staff.telkomuniversity.ac.id/" target="_blank">Mujaddid Halimurrosyid</a>';
 		$obj->homepage       = "https://github.com/{$this->username}/{$this->repository}";
 		$obj->download_link  = $this->get_package_url( $release );
 		$obj->sections       = array(
