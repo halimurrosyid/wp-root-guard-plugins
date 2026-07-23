@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.6.0 (23 Juli 2026)
+- **Fitur Baru**: **Uploads PHP Security Guard** — Pemindaian rekursif otomatis pada direktori `wp-content/uploads/` untuk mengisolasi, mendeteksi, dan menghapus berkas eksekusi PHP atau webshell berbahaya yang ditanam hacker di folder media unggahan.
+
 ### v1.5.0 (23 Juli 2026)
 - **Penyempurnaan Tampilan UI**: Perbaikan dan penataan ulang tampilan kartu *Status Perlindungan* (AMAN/BAHAYA) menggunakan tata letak flexbox modern agar ikon dan teks tidak bertumpuk di browser apapun.
 - **Fitur Baru**: Fitur Pengaturan **Jadwal Pemindaian Otomatis (Scan Schedule)** pada tab Pengaturan dengan pilihan interval: *Setiap 5 Menit, 15 Menit, 30 Menit, 1 Jam, 12 Jam, dan 24 Jam*.

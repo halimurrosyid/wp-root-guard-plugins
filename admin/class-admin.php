@@ -277,6 +277,7 @@ class Admin {
 			case 'save_settings':
 				$settings_data = array(
 					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'every_5_minutes',
+					'enable_uploads_php_scan'      => isset( $_POST['enable_uploads_php_scan'] ),
 					'enable_auto_quarantine'       => isset( $_POST['enable_auto_quarantine'] ),
 					'enable_email_notifications'    => isset( $_POST['enable_email_notifications'] ),
 					'admin_email'                  => isset( $_POST['admin_email'] ) ? sanitize_text_field( $_POST['admin_email'] ) : '',
@@ -715,17 +716,20 @@ class Admin {
 				</div>
 
 				<?php
-				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), dan core_file (wp-admin/wp-includes/root core)
+				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), core_file, dan uploads_php
 				$active_folders = array();
 				$active_files   = array();
 				$active_core    = array();
+				$active_uploads = array();
 				foreach ( $unknown_folders as $item ) {
 					if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $item['status'] ) {
 						continue;
 					}
 
 					$type = isset( $item['type'] ) ? $item['type'] : 'folder';
-					if ( 'core_file' === $type ) {
+					if ( 'uploads_php' === $type ) {
+						$active_uploads[] = $item;
+					} elseif ( 'core_file' === $type ) {
 						$active_core[] = $item;
 					} elseif ( 'file' === $type ) {
 						$active_files[] = $item;
@@ -923,7 +927,60 @@ class Admin {
 					</div>
 				</div>
 
-				<!-- DAFTAR ITEM DIKARANTINA -->
+				<!-- TABEL 4: HASIL PEMINDAIAN BERKAS PHP DI FOLDER UPLOADS -->
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca;">
+						<h2 style="color: #991b1b;">🚨 <?php esc_html_e( 'Hasil Scan: Berkas PHP Mencurigakan di Folder Uploads (wp-content/uploads)', 'wp-root-guard' ); ?></h2>
+					</div>
+					<div class="rg-card-body">
+						<?php if ( empty( $active_uploads ) ) : ?>
+							<div class="rg-empty-message">
+								<p>✅ <?php esc_html_e( 'Tidak ada berkas PHP berbahaya yang ditemukan di folder wp-content/uploads.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Indikasi Bahaya', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
+										<th style="width: 250px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $active_uploads as $file ) : ?>
+										<tr>
+											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
+											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
+											<td>
+												<span class="text-danger" style="font-size: 13px; font-weight: 600;">
+													⚠️ <?php echo esc_html( $file['malware_indicator'] ); ?>
+												</span>
+											</td>
+											<td><?php echo esc_html( $file['detection_time'] ); ?></td>
+											<td>
+												<span class="rg-badge badge-danger"><?php echo esc_html( $file['status'] ); ?></span>
+											</td>
+											<td>
+												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
+													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas PHP di folder uploads ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="color: #dc2626; border-color: #fca5a5; text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus berkas PHP penyusup di folder uploads ini secara PERMANEN?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_file_directly', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🗑️ <?php esc_html_e( 'Hapus', 'wp-root-guard' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
 						<h2>🔒 <?php esc_html_e( 'Daftar Karantina (Quarantined Folders & Files)', 'wp-root-guard' ); ?></h2>
@@ -1142,7 +1199,7 @@ class Admin {
 							<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
 							<input type="hidden" name="rg_action" value="save_settings">
 
-							<!-- SECTION 0: SCAN SCHEDULE -->
+							<!-- SECTION 0: SCAN SCHEDULE & UPLOADS GUARD -->
 							<div class="rg-settings-section">
 								<h3>⏱️ <?php esc_html_e( 'Jadwal Pemindaian Otomatis (Background Scan)', 'wp-root-guard' ); ?></h3>
 								<hr>
@@ -1158,6 +1215,16 @@ class Admin {
 									</select>
 									<p class="rg-field-desc">
 										<?php esc_html_e( 'Tentukan seberapa sering WP Root Guard secara otomatis memindai folder root dan berkas core di latar belakang.', 'wp-root-guard' ); ?>
+									</p>
+								</div>
+								<div class="rg-form-group" style="margin-top: 16px;">
+									<label class="rg-switch-label">
+										<input type="checkbox" name="enable_uploads_php_scan" value="1" <?php checked( $settings['enable_uploads_php_scan'], true ); ?>>
+										<span class="rg-switch-slider"></span>
+										<strong><?php esc_html_e( 'Aktifkan Pemindaian Berkas PHP di Folder wp-content/uploads/', 'wp-root-guard' ); ?></strong>
+									</label>
+									<p class="rg-field-desc">
+										<?php esc_html_e( 'Folder uploads seharusnya hanya berisi berkas media (gambar/dokumen). Mengaktifkan opsi ini akan mendeteksi dan mengisolasi setiap berkas eksekusi PHP atau webshell yang disisipkan di dalam direktori wp-content/uploads/.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>

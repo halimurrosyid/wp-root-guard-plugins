@@ -143,6 +143,7 @@ class Settings {
 	public static function get_settings() {
 		$defaults = array(
 			'scan_interval'                => 'every_5_minutes',
+			'enable_uploads_php_scan'      => true,
 			'enable_auto_quarantine'       => false,
 			'enable_email_notifications'    => false,
 			'admin_email'                  => get_option( 'admin_email' ),
@@ -176,7 +177,8 @@ class Settings {
 			}
 		}
 
-		$settings['enable_auto_quarantine'] = isset( $new_settings['enable_auto_quarantine'] ) ? (bool) $new_settings['enable_auto_quarantine'] : false;
+		$settings['enable_uploads_php_scan']    = isset( $new_settings['enable_uploads_php_scan'] ) ? (bool) $new_settings['enable_uploads_php_scan'] : false;
+		$settings['enable_auto_quarantine']     = isset( $new_settings['enable_auto_quarantine'] ) ? (bool) $new_settings['enable_auto_quarantine'] : false;
 		$settings['enable_email_notifications'] = isset( $new_settings['enable_email_notifications'] ) ? (bool) $new_settings['enable_email_notifications'] : false;
 
 		if ( isset( $new_settings['admin_email'] ) ) {

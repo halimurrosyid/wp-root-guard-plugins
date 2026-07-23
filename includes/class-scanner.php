@@ -296,6 +296,53 @@ class Scanner {
 			}
 		}
 
+		// ==========================================
+		// D. PEMINDAIAN BERKAS PHP DI FOLDER UPLOADS (wp-content/uploads)
+		// ==========================================
+		if ( ! isset( $settings['enable_uploads_php_scan'] ) || $settings['enable_uploads_php_scan'] ) {
+			$uploads_php = self::scan_uploads_for_php_files();
+			foreach ( $uploads_php as $php_file ) {
+				$rel_path  = $php_file['name'];
+				$file_path = $php_file['path'];
+
+				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
+				if ( file_exists( $file_path ) ) {
+					$ctime = filectime( $file_path );
+					if ( false !== $ctime ) {
+						$created_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $ctime );
+					}
+				}
+
+				$status_text       = esc_html__( 'PHP File in Uploads', 'wp-root-guard' );
+				$malware_indicator = self::scan_file_for_webshell( $file_path );
+				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Sangat Berbahaya (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas PHP di Folder Uploads', 'wp-root-guard' );
+
+				if ( $settings['enable_auto_quarantine'] ) {
+					$quarantine_name = self::quarantine_core_file( $rel_path );
+					if ( false !== $quarantine_name ) {
+						$status_text = esc_html__( 'Quarantined Automatically', 'wp-root-guard' );
+						$file_path   = ABSPATH . $quarantine_name;
+					}
+				} else {
+					Logger::log(
+						esc_html__( 'Berkas PHP terdeteksi di folder uploads', 'wp-root-guard' ),
+						$rel_path,
+						$malware_indicator ? esc_html__( 'Malware Suspicious', 'wp-root-guard' ) : esc_html__( 'Uploads PHP Threat', 'wp-root-guard' )
+					);
+				}
+
+				$threats[] = array(
+					'type'              => 'uploads_php',
+					'name'              => $rel_path,
+					'path'              => $file_path,
+					'created_time'      => $created_time,
+					'detection_time'    => $detection_time,
+					'status'            => $status_text,
+					'malware_indicator' => $malware_label,
+				);
+			}
+		}
+
 		// Kirim notifikasi jika ada ancaman baru yang belum pernah dilaporkan.
 		self::handle_threat_notifications( $threats );
 
@@ -982,5 +1029,51 @@ class Scanner {
 	public static function get_unknown_folders() {
 		$folders = get_option( 'wp_root_guard_unknown_folders', array() );
 		return is_array( $folders ) ? $folders : array();
+	}
+
+	/**
+	 * Memindai direktori wp-content/uploads/ secara rekursif untuk mencari berkas PHP mencurigakan.
+	 *
+	 * @return array Daftar berkas PHP yang ditemukan di folder uploads.
+	 */
+	public static function scan_uploads_for_php_files() {
+		$upload_dir = wp_upload_dir();
+		$base_dir   = isset( $upload_dir['basedir'] ) ? $upload_dir['basedir'] : '';
+
+		if ( empty( $base_dir ) || ! file_exists( $base_dir ) || ! is_dir( $base_dir ) ) {
+			return array();
+		}
+
+		$php_files      = array();
+		$user_whitelist = Settings::get_user_whitelist();
+
+		try {
+			$directory = new \RecursiveDirectoryIterator( $base_dir, \RecursiveDirectoryIterator::SKIP_DOTS );
+			$iterator  = new \RecursiveIteratorIterator( $directory, \RecursiveIteratorIterator::SELF_FIRST );
+
+			foreach ( $iterator as $item ) {
+				if ( $item->isFile() ) {
+					$ext = strtolower( pathinfo( $item->getFilename(), PATHINFO_EXTENSION ) );
+					if ( in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ) {
+						$abs_path = str_replace( '\\', '/', $item->getPathname() );
+						$rel_path = str_replace( str_replace( '\\', '/', ABSPATH ), '', $abs_path );
+
+						if ( in_array( $rel_path, $user_whitelist, true ) || in_array( $abs_path, $user_whitelist, true ) ) {
+							continue;
+						}
+
+						$php_files[] = array(
+							'name'     => $rel_path,
+							'path'     => $abs_path,
+							'filename' => $item->getFilename(),
+						);
+					}
+				}
+			}
+		} catch ( \Exception $e ) {
+			// Abaikan error eksepsi iterator
+		}
+
+		return $php_files;
 	}
 }
