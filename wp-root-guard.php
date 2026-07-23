@@ -11,7 +11,7 @@
  * Plugin Name:       WP Root Guard
  * Plugin URI:        https://indahweb.com/wp-root-guard
  * Description:       Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.
- * Version:           1.4.0
+ * Version:           1.4.1
  * Author:            Mujaddid Halimurrosyid
  * Author URI:        https://indahweb.com
  * License:           GPL v2 or later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Definisikan konstanta plugin.
-define( 'WP_ROOT_GUARD_VERSION', '1.4.0' );
+define( 'WP_ROOT_GUARD_VERSION', '1.4.1' );
 define( 'WP_ROOT_GUARD_FILE', __FILE__ );
 define( 'WP_ROOT_GUARD_PATH', plugin_dir_path( __FILE__ ) );
 define( 'WP_ROOT_GUARD_URL', plugin_dir_url( __FILE__ ) );

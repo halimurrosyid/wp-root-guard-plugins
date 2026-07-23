@@ -147,6 +147,9 @@ class Admin {
 			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( $_GET['_wpnonce'], 'wp_root_guard_check_update' ) && current_user_can( 'manage_options' ) ) {
 				delete_transient( 'wp_root_guard_latest_github_release' );
 				delete_site_transient( 'update_plugins' );
+				if ( function_exists( 'wp_update_plugins' ) ) {
+					wp_update_plugins();
+				}
 				wp_safe_redirect( admin_url( 'plugins.php' ) );
 				exit;
 			}

@@ -73,6 +73,7 @@ class Updater {
 	 */
 	public function init() {
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'check_update' ) );
+		add_filter( 'site_transient_update_plugins', array( $this, 'check_update' ) );
 		add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
 	}
 
@@ -83,8 +84,8 @@ class Updater {
 	 * @return object Data transient yang telah diperbarui jika ada versi baru.
 	 */
 	public function check_update( $transient ) {
-		if ( empty( $transient->checked ) ) {
-			return $transient;
+		if ( ! is_object( $transient ) ) {
+			$transient = new \stdClass();
 		}
 
 		$release = $this->get_latest_release();
@@ -97,12 +98,15 @@ class Updater {
 		// Bandingkan versi lokal dengan versi rilis di GitHub.
 		if ( version_compare( WP_ROOT_GUARD_VERSION, $remote_version, '<' ) ) {
 			$obj = new \stdClass();
-			// Dapatkan nama direktori plugin.
 			$obj->slug        = dirname( $this->plugin_slug );
 			$obj->plugin      = $this->plugin_slug;
 			$obj->new_version = $remote_version;
 			$obj->url         = "https://github.com/{$this->username}/{$this->repository}";
 			$obj->package     = $this->get_package_url( $release ); // Link unduh otomatis arsip ZIP dari GitHub.
+
+			if ( ! isset( $transient->response ) || ! is_array( $transient->response ) ) {
+				$transient->response = array();
+			}
 
 			$transient->response[ $this->plugin_slug ] = $obj;
 		}
