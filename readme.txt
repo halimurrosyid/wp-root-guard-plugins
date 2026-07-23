@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 1.8.0
+Stable tag: 1.8.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin, dan media unggahan Anda. WP Root Guard berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) untuk mencegah celah eksekusi backdoor utama.
 
 == Changelog ==
+
+= 1.8.1 =
+* Perbaikan Fatal Error terkait pemanggilan kelas Blocker namespace yang menyebabkan bagian log hilang.
 
 = 1.8.0 =
 * Penambahan Fitur Blocker Akses Webshell & IP Penyerang Otomatis (Attacker IP Blocker via .htaccess).

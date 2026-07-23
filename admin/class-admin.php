@@ -12,6 +12,7 @@ use WPRootGuard\Baseline;
 use WPRootGuard\Scanner;
 use WPRootGuard\Logger;
 use WPRootGuard\Cron;
+use WPRootGuard\Blocker;
 
 // Mencegah akses langsung.
 if ( ! defined( 'ABSPATH' ) ) {

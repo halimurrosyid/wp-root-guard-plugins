@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.8.1 (23 Juli 2026)
+- **Bugfix**: Perbaikan *Fatal Error* pemanggilan `use WPRootGuard\Blocker;` pada file admin yang sempat menyebabkan bagian bawah dasbor (termasuk Log Aktivitas) terhenti saat proses render.
+
 ### v1.8.0 (23 Juli 2026)
 - **Fitur Baru**: **Blocker Akses Webshell & IP Penyerang (.htaccess)** — Sistem pencegatan otomatis untuk percobaan eksekusi berkas PHP di folder media `uploads/` dan query string webshell injection, serta pemblokiran otomatis IP penyerang di berkas root `.htaccess` dengan penguncian instant 403 Forbidden.
 
