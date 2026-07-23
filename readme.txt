@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 1.8.1
+Stable tag: 1.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -28,9 +28,12 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN resmi WordPress.org sesuai versi WordPress terpasang Anda, lalu menimpanya dengan aman.
 
 = Apakah plugin ini memindai folder wp-content? =
-Tidak, karena wp-content berisi berkas dinamis tema, plugin, dan media unggahan Anda. WP Root Guard berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) untuk mencegah celah eksekusi backdoor utama.
+Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 1.9.0 =
+* Penambahan Fitur Inspektur Kode Berkas (Secure Code Inspector) dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting) untuk bagian kode berbahaya.
 
 = 1.8.1 =
 * Perbaikan Fatal Error terkait pemanggilan kelas Blocker namespace yang menyebabkan bagian log hilang.

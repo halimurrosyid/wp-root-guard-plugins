@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.9.0 (23 Juli 2026)
+- **Fitur Baru**: **Inspektur Kode Berkas (Secure Code Inspector)** — Fitur pop-up modal inspeksi isi berkas read-only yang aman lengkap dengan penandaan warna stabilo merah otomatis (*Malware Signature Highlighting*) pada setiap baris kode yang mengandung fungsi webshell berbahaya (`eval`, `base64_decode`, `shell_exec`, `system`, `passthru`, `gzinflate`, dll).
+
 ### v1.8.1 (23 Juli 2026)
 - **Bugfix**: Perbaikan *Fatal Error* pemanggilan `use WPRootGuard\Blocker;` pada file admin yang sempat menyebabkan bagian bawah dasbor (termasuk Log Aktivitas) terhenti saat proses render.
 

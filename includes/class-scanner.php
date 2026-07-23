@@ -538,17 +538,30 @@ class Scanner {
 		}
 
 		$suspicious_patterns = array(
-			'eval\('                   => 'eval()',
-			'base64_decode\('          => 'base64_decode()',
-			'shell_exec\('             => 'shell_exec()',
-			'passthru\('               => 'passthru()',
-			'system\('                 => 'system()',
-			'gzuncompress\('           => 'gzuncompress()',
-			'gzinflate\('              => 'gzinflate()',
-			'str_rot13\('              => 'str_rot13()',
-			'\$_POST\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\(' => 'Dynamic function execution via $_POST',
-			'\$_GET\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\('  => 'Dynamic function execution via $_GET',
-			'assert\('                 => 'assert()',
+			'eval\('                         => 'eval()',
+			'base64_decode\('                => 'base64_decode()',
+			'shell_exec\('                   => 'shell_exec()',
+			'passthru\('                     => 'passthru()',
+			'system\('                       => 'system()',
+			'exec\('                         => 'exec()',
+			'popen\('                        => 'popen()',
+			'proc_open\('                    => 'proc_open()',
+			'pcntl_exec\('                   => 'pcntl_exec()',
+			'gzuncompress\('                 => 'gzuncompress()',
+			'gzinflate\('                    => 'gzinflate()',
+			'str_rot13\('                    => 'str_rot13()',
+			'convert_uudecode\('             => 'convert_uudecode()',
+			'create_function\('              => 'create_function()',
+			'call_user_func\('               => 'call_user_func()',
+			'assert\('                       => 'assert()',
+			'\$_POST\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\(' => 'Dynamic $_POST call',
+			'\$_GET\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\('  => 'Dynamic $_GET call',
+			'c99shell'                       => 'C99 Webshell',
+			'r57shell'                       => 'R57 Webshell',
+			'b374k'                          => 'b374k Webshell',
+			'wso_version'                    => 'WSO Webshell',
+			'marvins'                        => 'Marvins Webshell',
+			'alfa_data'                      => 'ALFA Webshell',
 		);
 
 		$found = array();
@@ -559,10 +572,104 @@ class Scanner {
 		}
 
 		if ( ! empty( $found ) ) {
-			return implode( ', ', $found );
+			return implode( ', ', array_unique( $found ) );
 		}
 
 		return false;
+	}
+
+	/**
+	 * Membaca isi berkas secara aman dan menganalisis setiap baris untuk tanda tangan bahaya.
+	 *
+	 * @param string $rel_path Path relatif berkas.
+	 * @return array Data analisis baris berkas.
+	 */
+	public static function inspect_file_content( $rel_path ) {
+		$rel_path = sanitize_text_field( $rel_path );
+		$abs_path = str_replace( '\\', '/', ABSPATH . $rel_path );
+
+		if ( false !== strpos( $rel_path, '..' ) || ! file_exists( $abs_path ) || is_dir( $abs_path ) ) {
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Berkas tidak ditemukan atau path tidak valid.', 'wp-root-guard' ),
+			);
+		}
+
+		if ( filesize( $abs_path ) > 2 * 1024 * 1024 ) {
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Berkas terlalu besar untuk diinspeksi di browser (> 2MB).', 'wp-root-guard' ),
+			);
+		}
+
+		$content = @file_get_contents( $abs_path );
+		if ( false === $content ) {
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Gagal membaca isi berkas dari server.', 'wp-root-guard' ),
+			);
+		}
+
+		$patterns = array(
+			'eval\('                         => 'eval()',
+			'base64_decode\('                => 'base64_decode()',
+			'shell_exec\('                   => 'shell_exec()',
+			'passthru\('                     => 'passthru()',
+			'system\('                       => 'system()',
+			'exec\('                         => 'exec()',
+			'popen\('                        => 'popen()',
+			'proc_open\('                    => 'proc_open()',
+			'pcntl_exec\('                   => 'pcntl_exec()',
+			'gzuncompress\('                 => 'gzuncompress()',
+			'gzinflate\('                    => 'gzinflate()',
+			'str_rot13\('                    => 'str_rot13()',
+			'convert_uudecode\('             => 'convert_uudecode()',
+			'create_function\('              => 'create_function()',
+			'call_user_func\('               => 'call_user_func()',
+			'assert\('                       => 'assert()',
+			'\$_POST\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\(' => 'Dynamic $_POST call',
+			'\$_GET\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\('  => 'Dynamic $_GET call',
+			'c99shell'                       => 'C99 Webshell',
+			'r57shell'                       => 'R57 Webshell',
+			'b374k'                          => 'b374k Webshell',
+			'wso_version'                    => 'WSO Webshell',
+			'marvins'                        => 'Marvins Webshell',
+			'alfa_data'                      => 'ALFA Webshell',
+		);
+
+		$raw_lines     = explode( "\n", $content );
+		$lines         = array();
+		$total_dangers = 0;
+
+		foreach ( $raw_lines as $index => $line ) {
+			$line_num = $index + 1;
+			$matched  = array();
+
+			foreach ( $patterns as $pattern => $label ) {
+				if ( preg_match( '/' . $pattern . '/i', $line ) ) {
+					$matched[] = $label;
+				}
+			}
+
+			if ( ! empty( $matched ) ) {
+				$total_dangers += count( $matched );
+			}
+
+			$lines[] = array(
+				'line_number' => $line_num,
+				'code'        => $line,
+				'dangers'     => array_values( array_unique( $matched ) ),
+			);
+		}
+
+		return array(
+			'success'       => true,
+			'file_name'     => $rel_path,
+			'file_path'     => $abs_path,
+			'total_lines'   => count( $lines ),
+			'total_dangers' => $total_dangers,
+			'lines'         => $lines,
+		);
 	}
 
 	/**

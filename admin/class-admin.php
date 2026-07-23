@@ -38,9 +38,10 @@ class Admin {
 		// Tambahkan link "Settings" pada daftar plugin WordPress.
 		add_filter( 'plugin_action_links_' . plugin_basename( WP_ROOT_GUARD_FILE ), array( $this, 'add_action_links' ) );
 
-		// AJAX Actions untuk pemindaian dinamis interaktif
+		// AJAX Actions untuk pemindaian dinamis interaktif dan inspeksi kode
 		add_action( 'wp_ajax_wp_root_guard_get_scan_queue', array( $this, 'ajax_get_scan_queue' ) );
 		add_action( 'wp_ajax_wp_root_guard_run_scan', array( $this, 'ajax_run_scan' ) );
+		add_action( 'wp_ajax_wp_root_guard_inspect_file', array( $this, 'ajax_inspect_file' ) );
 	}
 
 	/**
@@ -475,6 +476,26 @@ class Admin {
 		Scanner::perform_scan();
 
 		wp_send_json_success( array( 'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ) ) );
+	}
+
+	/**
+	 * AJAX Handler untuk menginspeksi isi berkas secara aman.
+	 */
+	public function ajax_inspect_file() {
+		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+		}
+
+		$file = isset( $_POST['file'] ) ? sanitize_text_field( $_POST['file'] ) : '';
+		$res  = Scanner::inspect_file_content( $file );
+
+		if ( isset( $res['success'] ) && $res['success'] ) {
+			wp_send_json_success( $res );
+		} else {
+			wp_send_json_error( $res );
+		}
 	}
 
 	/**
@@ -939,6 +960,9 @@ class Admin {
 												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
 											</td>
 											<td>
+												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+												</button>
 												<?php if ( 'Suspicious Core Injection' === $file['status'] ) : ?>
 													<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
 														👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
@@ -1016,6 +1040,9 @@ class Admin {
 												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
 											</td>
 											<td>
+												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+												</button>
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
 													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
 												</button>
@@ -1073,6 +1100,9 @@ class Admin {
 												<span class="rg-badge badge-danger"><?php echo esc_html( $file['status'] ); ?></span>
 											</td>
 											<td>
+												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+												</button>
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
 													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
 												</button>
@@ -1284,7 +1314,122 @@ class Admin {
 					</div>
 				</div>
 
+				<!-- MODAL INSPEKTUR KODE BERKAS -->
+				<div id="rg-code-modal" class="rg-modal-overlay hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.75); z-index: 999999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+					<div class="rg-modal-content" style="background: #ffffff; width: 92%; max-width: 1050px; height: 88vh; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden;">
+						<div class="rg-modal-header" style="background: #0f172a; color: #ffffff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b;">
+							<div>
+								<h3 style="margin: 0; font-size: 16px; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+									👁️ <?php esc_html_e( 'Inspektur Kode Berkas:', 'wp-root-guard' ); ?>
+									<code id="rg-modal-filename" style="background: #1e293b; color: #38bdf8; padding: 3px 10px; border-radius: 6px; font-size: 14px; border: 1px solid #334155;">...</code>
+								</h3>
+								<div id="rg-modal-stats" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">...</div>
+							</div>
+							<button type="button" onclick="closeCodeInspector()" style="background: transparent; border: none; color: #94a3b8; font-size: 28px; cursor: pointer; line-height: 1; padding: 0 8px;">&times;</button>
+						</div>
+						<div class="rg-modal-body" style="padding: 0; flex: 1; overflow-y: auto; background: #090d16; font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
+							<div id="rg-modal-loading" style="padding: 60px 20px; text-align: center; color: #94a3b8; font-size: 15px;">
+								⏳ <?php esc_html_e( 'Memuat & menganalisis kode berkas dari server...', 'wp-root-guard' ); ?>
+							</div>
+							<div id="rg-modal-error" style="padding: 40px; text-align: center; color: #f87171; display: none;"></div>
+							<table id="rg-modal-codetable" style="width: 100%; border-collapse: collapse; display: none;">
+								<tbody id="rg-modal-codebody"></tbody>
+							</table>
+						</div>
+						<div class="rg-modal-footer" style="background: #f8fafc; padding: 14px 24px; border-top: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; justify-content: space-between;">
+							<div id="rg-modal-actions" style="display: flex; gap: 10px; align-items: center;"></div>
+							<button type="button" class="button button-secondary button-large" onclick="closeCodeInspector()"><?php esc_html_e( 'Tutup Inspektur', 'wp-root-guard' ); ?></button>
+						</div>
+					</div>
+				</div>
+
 				<script type="text/javascript">
+					function openCodeInspector(fileName) {
+						var modal = document.getElementById('rg-code-modal');
+						var filenameEl = document.getElementById('rg-modal-filename');
+						var statsEl = document.getElementById('rg-modal-stats');
+						var loadingEl = document.getElementById('rg-modal-loading');
+						var errorEl = document.getElementById('rg-modal-error');
+						var codeTable = document.getElementById('rg-modal-codetable');
+						var codeBody = document.getElementById('rg-modal-codebody');
+						var actionsEl = document.getElementById('rg-modal-actions');
+
+						if (!modal) return;
+
+						filenameEl.innerText = fileName;
+						statsEl.innerText = 'Memuat analisis...';
+						loadingEl.style.display = 'block';
+						errorEl.style.display = 'none';
+						codeTable.style.display = 'none';
+						codeBody.innerHTML = '';
+						actionsEl.innerHTML = '';
+						modal.classList.remove('hidden');
+
+						var data = {
+							action: 'wp_root_guard_inspect_file',
+							file: fileName,
+							security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
+						};
+
+						jQuery.post(ajaxurl, data, function(response) {
+							loadingEl.style.display = 'none';
+
+							if (response.success && response.data) {
+								var res = response.data;
+								var statsText = 'Total Baris: ' + res.total_lines;
+								if (res.total_dangers > 0) {
+									statsText += ' | ⚠️ TERDETEKSI ' + res.total_dangers + ' INDIKASI BAHAYA MALWARE';
+								} else {
+									statsText += ' | ✅ Tidak terdeteksi tanda tangan malware berbahaya';
+								}
+								statsEl.innerText = statsText;
+
+								var rowsHtml = '';
+								res.lines.forEach(function(item) {
+									var isDanger = item.dangers && item.dangers.length > 0;
+									var trStyle = isDanger ? 'background: #450a0a; color: #fecaca; font-weight: 600;' : 'color: #e2e8f0;';
+									var lineStyle = isDanger ? 'background: #7f1d1d; color: #fca5a5;' : 'background: #1e293b; color: #64748b;';
+									
+									rowsHtml += '<tr style="' + trStyle + '">';
+									rowsHtml += '<td style="width: 50px; text-align: right; padding: 2px 10px; user-select: none; border-right: 1px solid #334155; ' + lineStyle + '">' + item.line_number + '</td>';
+									rowsHtml += '<td style="padding: 2px 12px; white-space: pre-wrap; word-break: break-all;">';
+									
+									if (isDanger) {
+										rowsHtml += '<span style="background: #dc2626; color: #ffffff; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; font-weight: bold;">⚠️ BAHAYA: ' + item.dangers.join(', ') + '</span>';
+									}
+									
+									var escapedCode = jQuery('<div/>').text(item.code).html();
+									rowsHtml += escapedCode;
+									rowsHtml += '</td>';
+									rowsHtml += '</tr>';
+								});
+
+								codeBody.innerHTML = rowsHtml;
+								codeTable.style.display = 'table';
+
+								// Tombol aksi di footer modal
+								var actionsHtml = '';
+								actionsHtml += '<button type="button" class="button button-secondary" onclick="trustFolder(\'' + fileName + '\')">👍 Trust File</button>';
+								actionsHtml += '<button type="button" class="button button-secondary" onclick="if(confirm(\'Karantina berkas ini?\')) { submitFolderAction(\'quarantine_file\', \'' + fileName + '\'); }">🔒 Karantina</button>';
+								actionsHtml += '<button type="button" class="button button-link-delete" style="color: #dc2626; border-color: #fca5a5;" onclick="if(confirm(\'Apakah Anda yakin ingin menghapus berkas ini secara PERMANEN?\')) { submitFolderAction(\'delete_file_directly\', \'' + fileName + '\'); }">🗑️ Hapus Permanen</button>';
+								actionsEl.innerHTML = actionsHtml;
+
+							} else {
+								errorEl.innerText = '❌ ' + (response.data ? response.data.message : 'Gagal membaca berkas.');
+								errorEl.style.display = 'block';
+							}
+						}).fail(function() {
+							loadingEl.style.display = 'none';
+							errorEl.innerText = '❌ Terjadi kesalahan koneksi server saat membaca berkas.';
+							errorEl.style.display = 'block';
+						});
+					}
+
+					function closeCodeInspector() {
+						var modal = document.getElementById('rg-code-modal');
+						if (modal) modal.classList.add('hidden');
+					}
+
 					function toggleSelectAllTable(masterCheckbox) {
 						var table = masterCheckbox.closest('table');
 						if (table) {
