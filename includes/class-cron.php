@@ -29,30 +29,51 @@ class Cron {
 	}
 
 	/**
-	 * Menambahkan interval kustom 5 menit ke daftar jadwal cron WordPress.
+	 * Menambahkan interval kustom (5 menit, 15 menit, 30 menit) ke daftar jadwal cron WordPress.
 	 *
 	 * @param array $schedules Daftar jadwal cron saat ini.
-	 * @return array Daftar jadwal cron setelah ditambah interval 5 menit.
+	 * @return array Daftar jadwal cron setelah ditambah interval kustom.
 	 */
 	public function add_cron_interval( $schedules ) {
 		$schedules['every_5_minutes'] = array(
-			'interval' => 300, // 5 menit dalam hitungan detik.
+			'interval' => 300,
 			'display'  => esc_html__( 'Setiap 5 Menit', 'wp-root-guard' ),
+		);
+		$schedules['every_15_minutes'] = array(
+			'interval' => 900,
+			'display'  => esc_html__( 'Setiap 15 Menit', 'wp-root-guard' ),
+		);
+		$schedules['every_30_minutes'] = array(
+			'interval' => 1800,
+			'display'  => esc_html__( 'Setiap 30 Menit', 'wp-root-guard' ),
 		);
 		return $schedules;
 	}
 
 	/**
-	 * Menjadwalkan pemindaian otomatis jika belum terdaftar.
+	 * Menjadwalkan pemindaian otomatis berdasarkan interval di pengaturan.
 	 */
 	public static function schedule_event() {
+		$settings = Settings::get_settings();
+		$interval = ! empty( $settings['scan_interval'] ) ? $settings['scan_interval'] : 'every_5_minutes';
+
 		if ( ! wp_next_scheduled( 'wp_root_guard_cron_scan' ) ) {
-			wp_schedule_event( time(), 'every_5_minutes', 'wp_root_guard_cron_scan' );
+			wp_schedule_event( time(), $interval, 'wp_root_guard_cron_scan' );
 		}
 	}
 
 	/**
-	 * Membatalkan jadwal pemindaian otomatis (misal saat deaktivas / reset).
+	 * Menjadwalkan ulang event cron saat opsi interval diubah di pengaturan.
+	 *
+	 * @param string $new_interval Interval baru yang dipilih user.
+	 */
+	public static function reschedule_event( $new_interval ) {
+		self::unschedule_event();
+		wp_schedule_event( time(), $new_interval, 'wp_root_guard_cron_scan' );
+	}
+
+	/**
+	 * Membatalkan jadwal pemindaian otomatis (misal saat deaktivasi / reset).
 	 */
 	public static function unschedule_event() {
 		$timestamp = wp_next_scheduled( 'wp_root_guard_cron_scan' );

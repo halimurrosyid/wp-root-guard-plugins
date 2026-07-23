@@ -142,6 +142,7 @@ class Settings {
 	 */
 	public static function get_settings() {
 		$defaults = array(
+			'scan_interval'                => 'every_5_minutes',
 			'enable_auto_quarantine'       => false,
 			'enable_email_notifications'    => false,
 			'admin_email'                  => get_option( 'admin_email' ),
@@ -162,6 +163,18 @@ class Settings {
 	 */
 	public static function update_settings( $new_settings ) {
 		$settings = self::get_settings();
+
+		if ( isset( $new_settings['scan_interval'] ) ) {
+			$old_interval = isset( $settings['scan_interval'] ) ? $settings['scan_interval'] : '';
+			$new_interval = sanitize_text_field( $new_settings['scan_interval'] );
+			$valid_intervals = array( 'every_5_minutes', 'every_15_minutes', 'every_30_minutes', 'hourly', 'twicedaily', 'daily' );
+			if ( in_array( $new_interval, $valid_intervals, true ) ) {
+				$settings['scan_interval'] = $new_interval;
+				if ( $old_interval !== $new_interval ) {
+					Cron::reschedule_event( $new_interval );
+				}
+			}
+		}
 
 		$settings['enable_auto_quarantine'] = isset( $new_settings['enable_auto_quarantine'] ) ? (bool) $new_settings['enable_auto_quarantine'] : false;
 		$settings['enable_email_notifications'] = isset( $new_settings['enable_email_notifications'] ) ? (bool) $new_settings['enable_email_notifications'] : false;

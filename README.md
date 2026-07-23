@@ -19,6 +19,10 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.5.0 (23 Juli 2026)
+- **Penyempurnaan Tampilan UI**: Perbaikan dan penataan ulang tampilan kartu *Status Perlindungan* (AMAN/BAHAYA) menggunakan tata letak flexbox modern agar ikon dan teks tidak bertumpuk di browser apapun.
+- **Fitur Baru**: Fitur Pengaturan **Jadwal Pemindaian Otomatis (Scan Schedule)** pada tab Pengaturan dengan pilihan interval: *Setiap 5 Menit, 15 Menit, 30 Menit, 1 Jam, 12 Jam, dan 24 Jam*.
+
 ### v1.4.3 (23 Juli 2026)
 - **Fitur Baru**: Penambahan tombol aksi **`🗑️ Hapus`** (Delete Directly) pada tabel Integritas Core dan Berkas Asing Root untuk memfasilitasi penghapusan langsung file penyusup/sampah tanpa perlu dikarantina terlebih dahulu.
 
