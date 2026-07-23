@@ -274,6 +274,46 @@ class Admin {
 				wp_safe_redirect( add_query_arg( 'message', 'logs_cleared', $redirect_url ) );
 				exit;
 
+			case 'bulk_action':
+				$action_type = isset( $_POST['bulk_action_type'] ) ? sanitize_text_field( $_POST['bulk_action_type'] ) : '';
+				$items       = isset( $_POST['bulk_items'] ) && is_array( $_POST['bulk_items'] ) ? array_map( 'sanitize_text_field', $_POST['bulk_items'] ) : array();
+
+				if ( ! empty( $action_type ) && ! empty( $items ) ) {
+					$success_count = 0;
+					foreach ( $items as $item ) {
+						if ( 'bulk_trust' === $action_type ) {
+							if ( Settings::add_to_whitelist( $item ) ) {
+								$success_count++;
+							}
+						} elseif ( 'bulk_quarantine' === $action_type ) {
+							if ( false !== strpos( $item, '/' ) ) {
+								$res = Scanner::quarantine_core_file( $item );
+							} else {
+								$res = Scanner::quarantine_file( $item );
+							}
+							if ( false !== $res ) {
+								$success_count++;
+							}
+						} elseif ( 'bulk_delete' === $action_type ) {
+							if ( Scanner::delete_file_directly( $item ) ) {
+								$success_count++;
+							}
+						}
+					}
+
+					Scanner::perform_scan();
+
+					if ( 'bulk_trust' === $action_type ) {
+						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_trusted', 'count' => $success_count ), $redirect_url ) );
+					} elseif ( 'bulk_quarantine' === $action_type ) {
+						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_quarantined', 'count' => $success_count ), $redirect_url ) );
+					} elseif ( 'bulk_delete' === $action_type ) {
+						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_deleted', 'count' => $success_count ), $redirect_url ) );
+					}
+					exit;
+				}
+				break;
+
 			case 'save_settings':
 				$settings_data = array(
 					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'every_5_minutes',
@@ -473,6 +513,18 @@ class Admin {
 				break;
 			case 'file_deleted':
 				$notice_text = esc_html__( 'Berkas asing/penyusup berhasil dihapus secara permanen dari server.', 'wp-root-guard' );
+				break;
+			case 'bulk_trusted':
+				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text = sprintf( /* translators: %d: jumlah */ esc_html__( '%d item ancaman berhasil ditambahkan ke whitelist kustom.', 'wp-root-guard' ), $count );
+				break;
+			case 'bulk_quarantined':
+				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text = sprintf( /* translators: %d: jumlah */ esc_html__( '%d item ancaman berhasil dipindahkan ke karantina.', 'wp-root-guard' ), $count );
+				break;
+			case 'bulk_deleted':
+				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text = sprintf( /* translators: %d: jumlah berkas */ esc_html__( '%d berkas ancaman berhasil dihapus secara permanen dari server.', 'wp-root-guard' ), $count );
 				break;
 			case 'delete_failed':
 				$notice_class = 'notice-error';
@@ -739,6 +791,29 @@ class Admin {
 				}
 				?>
 
+				<!-- FORM & BULK ACTION BAR -->
+				<?php if ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) ) : ?>
+					<form method="post" id="rg-bulk-form" action="">
+						<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
+						<input type="hidden" name="rg_action" value="bulk_action">
+
+						<div class="rg-bulk-bar" style="display: flex; align-items: center; gap: 12px; background: #ffffff; padding: 14px 20px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+							<strong style="font-size: 14px; color: #1e293b;">⚡ <?php esc_html_e( 'Aksi Massal (Bulk Actions):', 'wp-root-guard' ); ?></strong>
+							<select name="bulk_action_type" id="rg_bulk_action_type" style="min-width: 220px; padding: 5px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
+								<option value=""><?php esc_html_e( '— Pilih Tindakan Massal —', 'wp-root-guard' ); ?></option>
+								<option value="bulk_trust">👍 <?php esc_html_e( 'Trust Selected (Tambah ke Whitelist)', 'wp-root-guard' ); ?></option>
+								<option value="bulk_quarantine">🔒 <?php esc_html_e( 'Karantina Selected', 'wp-root-guard' ); ?></option>
+								<option value="bulk_delete">🗑️ <?php esc_html_e( 'Hapus Permanen Selected', 'wp-root-guard' ); ?></option>
+							</select>
+							<button type="button" class="button button-primary" onclick="executeBulkAction()">
+								<?php esc_html_e( 'Terapkan (Apply)', 'wp-root-guard' ); ?>
+							</button>
+							<span style="font-size: 13px; color: #64748b; margin-left: auto;">
+								<span id="rg-selected-count" style="font-weight: bold; color: #2563eb; font-size: 15px;">0</span> <?php esc_html_e( 'item dipilih dari seluruh tabel', 'wp-root-guard' ); ?>
+							</span>
+						</div>
+				<?php endif; ?>
+
 				<!-- TABEL 1: HASIL PEMINDAIAN FOLDER ASING -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
@@ -753,6 +828,7 @@ class Admin {
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
 										<th><?php esc_html_e( 'Nama Folder', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Waktu Dibuat', 'wp-root-guard' ); ?></th>
@@ -764,6 +840,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_folders as $folder ) : ?>
 										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $folder['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $folder['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $folder['path'] ); ?></code></td>
 											<td><?php echo esc_html( $folder['created_time'] ); ?></td>
@@ -796,6 +873,7 @@ class Admin {
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
 										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Keadaan Berkas / Indikasi', 'wp-root-guard' ); ?></th>
@@ -806,6 +884,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_core as $file ) : ?>
 										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -875,6 +954,7 @@ class Admin {
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
 										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Indikasi / Keadaan berkas', 'wp-root-guard' ); ?></th>
@@ -886,6 +966,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_files as $file ) : ?>
 										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -941,6 +1022,7 @@ class Admin {
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
 									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
 										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Indikasi Bahaya', 'wp-root-guard' ); ?></th>
@@ -952,6 +1034,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_uploads as $file ) : ?>
 										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -981,6 +1064,10 @@ class Admin {
 						<?php endif; ?>
 					</div>
 				</div>
+
+				<?php if ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) ) : ?>
+					</form>
+				<?php endif; ?>
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header">
 						<h2>🔒 <?php esc_html_e( 'Daftar Karantina (Quarantined Folders & Files)', 'wp-root-guard' ); ?></h2>
@@ -1120,6 +1207,54 @@ class Admin {
 				</div>
 
 				<script type="text/javascript">
+					function toggleSelectAllTable(masterCheckbox) {
+						var table = masterCheckbox.closest('table');
+						if (table) {
+							var checkboxes = table.querySelectorAll('.rg-item-checkbox');
+							checkboxes.forEach(function(cb) {
+								cb.checked = masterCheckbox.checked;
+							});
+							updateSelectedCount();
+						}
+					}
+
+					function updateSelectedCount() {
+						var count = document.querySelectorAll('.rg-item-checkbox:checked').length;
+						var counterEl = document.getElementById('rg-selected-count');
+						if (counterEl) {
+							counterEl.innerText = count;
+						}
+					}
+
+					function executeBulkAction() {
+						var actionSelect = document.getElementById('rg_bulk_action_type');
+						var action = actionSelect ? actionSelect.value : '';
+						var checkedCount = document.querySelectorAll('.rg-item-checkbox:checked').length;
+
+						if (!action) {
+							alert('Silakan pilih jenis tindakan massal terlebih dahulu.');
+							return;
+						}
+
+						if (checkedCount === 0) {
+							alert('Silakan centang/pilih minimal 1 item ancaman dari tabel.');
+							return;
+						}
+
+						var message = '';
+						if (action === 'bulk_trust') {
+							message = 'Apakah Anda yakin ingin menambahkan ' + checkedCount + ' item ancaman yang dipilih ke Whitelist Kustom?';
+						} else if (action === 'bulk_quarantine') {
+							message = 'Apakah Anda yakin ingin memindahkan ' + checkedCount + ' item ancaman yang dipilih ke Karantina?';
+						} else if (action === 'bulk_delete') {
+							message = 'PERINGATAN BAHAYA: Apakah Anda yakin ingin menghapus ' + checkedCount + ' berkas/folder ancaman yang dipilih secara PERMANEN dari server? Aksi ini tidak dapat dibatalkan!';
+						}
+
+						if (confirm(message)) {
+							document.getElementById('rg-bulk-form').submit();
+						}
+					}
+
 					function startDynamicScan() {
 						var statusCard = document.getElementById('rg-status-card');
 						var summaryCard = document.getElementById('rg-summary-card');

@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.7.0 (23 Juli 2026)
+- **Fitur Baru**: **Fitur Aksi Massal (Bulk Actions)** — Penambahan checkbox checklist pada setiap tabel temuan scan dan toolbar *Bulk Action Bar* untuk mengeksekusi penanganan massal (*Trust*, *Karantina*, atau *Hapus Permanen*) pada banyak ancaman sekaligus dengan 1-klik.
+
 ### v1.6.0 (23 Juli 2026)
 - **Fitur Baru**: **Uploads PHP Security Guard** — Pemindaian rekursif otomatis pada direktori `wp-content/uploads/` untuk mengisolasi, mendeteksi, dan menghapus berkas eksekusi PHP atau webshell berbahaya yang ditanam hacker di folder media unggahan.
 
