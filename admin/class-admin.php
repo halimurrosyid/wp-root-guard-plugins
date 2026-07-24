@@ -1158,6 +1158,11 @@ class Admin {
 											<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item['quarantine_time'] ) ) ); ?></td>
 											<td><span class="rg-badge badge-safe">🔒 <?php echo esc_html( $status_label ); ?></span></td>
 											<td>
+												<?php if ( isset( $item['type'] ) && 'file' === $item['type'] ) : ?>
+													<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $item['quarantine_name'] ); ?>')">
+														👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+													</button>
+												<?php endif; ?>
 												<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin memulihkan item ini kembali ke root asal? Item ini otomatis akan masuk ke Whitelist agar tidak dikarantina kembali.', 'wp-root-guard' ) ); ?>')) { submitFolderAction('restore_folder', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
 													↩️ <?php esc_html_e( 'Restore', 'wp-root-guard' ); ?>
 												</button>
@@ -1250,6 +1255,9 @@ class Admin {
 											<td><strong><?php echo esc_html( $folder_name ); ?></strong></td>
 											<td><code><?php echo esc_html( ABSPATH . $folder_name ); ?></code></td>
 											<td>
+												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $folder_name ); ?>')">
+													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+												</button>
 												<button type="button" class="button button-small button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin mematikan status percaya untuk item ini?', 'wp-root-guard' ) ); ?>')) { untrustFolder('<?php echo esc_js( $folder_name ); ?>'); }">
 													❌ <?php esc_html_e( 'Jangan Percayai', 'wp-root-guard' ); ?>
 												</button>
