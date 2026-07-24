@@ -1167,6 +1167,67 @@ class Scanner {
 	}
 
 	/**
+	 * Mengirim pesan HTTP POST ke API Telegram Bot.
+	 *
+	 * @param string $token Bot token Telegram.
+	 * @param string $chat_id Chat ID Telegram.
+	 * @param string $message Pesan yang akan dikirim.
+	 * @return bool True jika berhasil terkirim.
+	 */
+	public static function send_telegram_message( $token, $chat_id, $message ) {
+		$token   = trim( $token );
+		$chat_id = trim( $chat_id );
+
+		if ( empty( $token ) || empty( $chat_id ) || empty( $message ) ) {
+			return false;
+		}
+
+		$url  = "https://api.telegram.org/bot{$token}/sendMessage";
+		$body = array(
+			'chat_id'                  => $chat_id,
+			'text'                     => $message,
+			'parse_mode'               => 'Markdown',
+			'disable_web_page_preview' => true,
+		);
+
+		$args = array(
+			'body'        => $body,
+			'timeout'     => 15,
+			'redirection' => 5,
+			'blocking'    => true,
+			'headers'     => array(
+				'Content-Type' => 'application/x-www-form-urlencoded',
+			),
+			'sslverify'   => false,
+		);
+
+		$response = wp_remote_post( $url, $args );
+
+		if ( is_wp_error( $response ) ) {
+			Logger::log(
+				esc_html__( 'Gagal mengontak API Telegram', 'wp-root-guard' ),
+				$response->get_error_message(),
+				esc_html__( 'Error', 'wp-root-guard' )
+			);
+			return false;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 === $code ) {
+			return true;
+		}
+
+		$response_body = wp_remote_retrieve_body( $response );
+		Logger::log(
+			esc_html__( 'Respon error dari API Telegram', 'wp-root-guard' ),
+			'HTTP ' . $code . ': ' . substr( $response_body, 0, 100 ),
+			esc_html__( 'Error', 'wp-root-guard' )
+		);
+
+		return false;
+	}
+
+	/**
 	 * Mengambil data pemindaian terakhir.
 	 *
 	 * @return array Hasil pemindaian terakhir.

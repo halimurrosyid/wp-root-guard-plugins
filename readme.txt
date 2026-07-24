@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.1.0
+Stable tag: 2.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.1.1 =
+* Perbaikan Fatal Error / Error 500 saat melakukan uji coba kirim notifikasi Telegram (penambahan metode send_telegram_message yang hilang).
 
 = 2.1.0 =
 * Penambahan Tombol Lihat Isi (Code Inspector) pada seluruh tabel dasbor termasuk Daftar Karantina dan Whitelist Kustom.

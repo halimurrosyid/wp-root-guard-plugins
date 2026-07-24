@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.1.1 (24 Juli 2026)
+- **Bugfix**: Perbaikan *Fatal Error* / *HTTP Error 500* saat pengiriman pesan uji coba Telegram karena belum terdeklarasikannya metode `Scanner::send_telegram_message()`.
+
 ### v2.1.0 (24 Juli 2026)
 - **Fitur Baru**: **Inspektur Kode Universal (Universal Code Inspection)** — Penambahan tombol **`👁️ Lihat Isi`** pada seluruh tabel di dasbor, termasuk pada tabel **Daftar Karantina** dan **Whitelist Kustom**, sehingga Anda dapat menginspeksi isi berkas kapan pun di mana pun dengan aman.
 
