@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v1.9.1 (24 Juli 2026)
+- **Bugfix & UX Update**: Perbaikan gaya CSS pada pop-up modal *Inspektur Kode Berkas* agar tersembunyi (`display: none`) secara otomatis pada saat halaman dimuat, serta penambahan indikator persentase pemuatan (*loading progress bar* 0% - 100%) dan tombol tutup instan (ESC / tombol &times;).
+
 ### v1.9.0 (23 Juli 2026)
 - **Fitur Baru**: **Inspektur Kode Berkas (Secure Code Inspector)** — Fitur pop-up modal inspeksi isi berkas read-only yang aman lengkap dengan penandaan warna stabilo merah otomatis (*Malware Signature Highlighting*) pada setiap baris kode yang mengandung fungsi webshell berbahaya (`eval`, `base64_decode`, `shell_exec`, `system`, `passthru`, `gzinflate`, dll).
 

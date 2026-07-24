@@ -1315,7 +1315,7 @@ class Admin {
 				</div>
 
 				<!-- MODAL INSPEKTUR KODE BERKAS -->
-				<div id="rg-code-modal" class="rg-modal-overlay hidden" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.75); z-index: 999999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+				<div id="rg-code-modal" class="rg-modal-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.75); z-index: 999999; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
 					<div class="rg-modal-content" style="background: #ffffff; width: 92%; max-width: 1050px; height: 88vh; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden;">
 						<div class="rg-modal-header" style="background: #0f172a; color: #ffffff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1e293b;">
 							<div>
@@ -1329,7 +1329,10 @@ class Admin {
 						</div>
 						<div class="rg-modal-body" style="padding: 0; flex: 1; overflow-y: auto; background: #090d16; font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
 							<div id="rg-modal-loading" style="padding: 60px 20px; text-align: center; color: #94a3b8; font-size: 15px;">
-								⏳ <?php esc_html_e( 'Memuat & menganalisis kode berkas dari server...', 'wp-root-guard' ); ?>
+								<div style="margin-bottom: 10px;">⏳ <?php esc_html_e( 'Memuat & menganalisis kode berkas dari server...', 'wp-root-guard' ); ?> <strong id="rg-modal-loading-pct" style="color: #38bdf8;">0%</strong></div>
+								<div style="width: 240px; height: 6px; background: #1e293b; border-radius: 3px; margin: 0 auto; overflow: hidden;">
+									<div id="rg-modal-loading-bar" style="width: 0%; height: 100%; background: #38bdf8; transition: width 0.2s ease;"></div>
+								</div>
 							</div>
 							<div id="rg-modal-error" style="padding: 40px; text-align: center; color: #f87171; display: none;"></div>
 							<table id="rg-modal-codetable" style="width: 100%; border-collapse: collapse; display: none;">
@@ -1349,6 +1352,8 @@ class Admin {
 						var filenameEl = document.getElementById('rg-modal-filename');
 						var statsEl = document.getElementById('rg-modal-stats');
 						var loadingEl = document.getElementById('rg-modal-loading');
+						var loadingPct = document.getElementById('rg-modal-loading-pct');
+						var loadingBar = document.getElementById('rg-modal-loading-bar');
 						var errorEl = document.getElementById('rg-modal-error');
 						var codeTable = document.getElementById('rg-modal-codetable');
 						var codeBody = document.getElementById('rg-modal-codebody');
@@ -1358,12 +1363,14 @@ class Admin {
 
 						filenameEl.innerText = fileName;
 						statsEl.innerText = 'Memuat analisis...';
+						if (loadingPct) loadingPct.innerText = '15%';
+						if (loadingBar) loadingBar.style.width = '15%';
 						loadingEl.style.display = 'block';
 						errorEl.style.display = 'none';
 						codeTable.style.display = 'none';
 						codeBody.innerHTML = '';
 						actionsEl.innerHTML = '';
-						modal.classList.remove('hidden');
+						modal.style.display = 'flex';
 
 						var data = {
 							action: 'wp_root_guard_inspect_file',
@@ -1371,53 +1378,61 @@ class Admin {
 							security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
 						};
 
+						if (loadingPct) loadingPct.innerText = '45%';
+						if (loadingBar) loadingBar.style.width = '45%';
+
 						jQuery.post(ajaxurl, data, function(response) {
-							loadingEl.style.display = 'none';
+							if (loadingPct) loadingPct.innerText = '90%';
+							if (loadingBar) loadingBar.style.width = '90%';
 
-							if (response.success && response.data) {
-								var res = response.data;
-								var statsText = 'Total Baris: ' + res.total_lines;
-								if (res.total_dangers > 0) {
-									statsText += ' | ⚠️ TERDETEKSI ' + res.total_dangers + ' INDIKASI BAHAYA MALWARE';
-								} else {
-									statsText += ' | ✅ Tidak terdeteksi tanda tangan malware berbahaya';
-								}
-								statsEl.innerText = statsText;
+							setTimeout(function() {
+								loadingEl.style.display = 'none';
 
-								var rowsHtml = '';
-								res.lines.forEach(function(item) {
-									var isDanger = item.dangers && item.dangers.length > 0;
-									var trStyle = isDanger ? 'background: #450a0a; color: #fecaca; font-weight: 600;' : 'color: #e2e8f0;';
-									var lineStyle = isDanger ? 'background: #7f1d1d; color: #fca5a5;' : 'background: #1e293b; color: #64748b;';
-									
-									rowsHtml += '<tr style="' + trStyle + '">';
-									rowsHtml += '<td style="width: 50px; text-align: right; padding: 2px 10px; user-select: none; border-right: 1px solid #334155; ' + lineStyle + '">' + item.line_number + '</td>';
-									rowsHtml += '<td style="padding: 2px 12px; white-space: pre-wrap; word-break: break-all;">';
-									
-									if (isDanger) {
-										rowsHtml += '<span style="background: #dc2626; color: #ffffff; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; font-weight: bold;">⚠️ BAHAYA: ' + item.dangers.join(', ') + '</span>';
+								if (response.success && response.data) {
+									var res = response.data;
+									var statsText = 'Total Baris: ' + res.total_lines;
+									if (res.total_dangers > 0) {
+										statsText += ' | ⚠️ TERDETEKSI ' + res.total_dangers + ' INDIKASI BAHAYA MALWARE';
+									} else {
+										statsText += ' | ✅ Tidak terdeteksi tanda tangan malware berbahaya';
 									}
-									
-									var escapedCode = jQuery('<div/>').text(item.code).html();
-									rowsHtml += escapedCode;
-									rowsHtml += '</td>';
-									rowsHtml += '</tr>';
-								});
+									statsEl.innerText = statsText;
 
-								codeBody.innerHTML = rowsHtml;
-								codeTable.style.display = 'table';
+									var rowsHtml = '';
+									res.lines.forEach(function(item) {
+										var isDanger = item.dangers && item.dangers.length > 0;
+										var trStyle = isDanger ? 'background: #450a0a; color: #fecaca; font-weight: 600;' : 'color: #e2e8f0;';
+										var lineStyle = isDanger ? 'background: #7f1d1d; color: #fca5a5;' : 'background: #1e293b; color: #64748b;';
+										
+										rowsHtml += '<tr style="' + trStyle + '">';
+										rowsHtml += '<td style="width: 50px; text-align: right; padding: 2px 10px; user-select: none; border-right: 1px solid #334155; ' + lineStyle + '">' + item.line_number + '</td>';
+										rowsHtml += '<td style="padding: 2px 12px; white-space: pre-wrap; word-break: break-all;">';
+										
+										if (isDanger) {
+											rowsHtml += '<span style="background: #dc2626; color: #ffffff; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; font-weight: bold;">⚠️ BAHAYA: ' + item.dangers.join(', ') + '</span>';
+										}
+										
+										var escapedCode = jQuery('<div/>').text(item.code).html();
+										rowsHtml += escapedCode;
+										rowsHtml += '</td>';
+										rowsHtml += '</tr>';
+									});
 
-								// Tombol aksi di footer modal
-								var actionsHtml = '';
-								actionsHtml += '<button type="button" class="button button-secondary" onclick="trustFolder(\'' + fileName + '\')">👍 Trust File</button>';
-								actionsHtml += '<button type="button" class="button button-secondary" onclick="if(confirm(\'Karantina berkas ini?\')) { submitFolderAction(\'quarantine_file\', \'' + fileName + '\'); }">🔒 Karantina</button>';
-								actionsHtml += '<button type="button" class="button button-link-delete" style="color: #dc2626; border-color: #fca5a5;" onclick="if(confirm(\'Apakah Anda yakin ingin menghapus berkas ini secara PERMANEN?\')) { submitFolderAction(\'delete_file_directly\', \'' + fileName + '\'); }">🗑️ Hapus Permanen</button>';
-								actionsEl.innerHTML = actionsHtml;
+									codeBody.innerHTML = rowsHtml;
+									codeTable.style.display = 'table';
 
-							} else {
-								errorEl.innerText = '❌ ' + (response.data ? response.data.message : 'Gagal membaca berkas.');
-								errorEl.style.display = 'block';
-							}
+									// Tombol aksi di footer modal
+									var actionsHtml = '';
+									actionsHtml += '<button type="button" class="button button-secondary" onclick="trustFolder(\'' + fileName + '\')">👍 Trust File</button>';
+									actionsHtml += '<button type="button" class="button button-secondary" onclick="if(confirm(\'Karantina berkas ini?\')) { submitFolderAction(\'quarantine_file\', \'' + fileName + '\'); }">🔒 Karantina</button>';
+									actionsHtml += '<button type="button" class="button button-link-delete" style="color: #dc2626; border-color: #fca5a5;" onclick="if(confirm(\'Apakah Anda yakin ingin menghapus berkas ini secara PERMANEN?\')) { submitFolderAction(\'delete_file_directly\', \'' + fileName + '\'); }">🗑️ Hapus Permanen</button>';
+									actionsEl.innerHTML = actionsHtml;
+
+								} else {
+									errorEl.innerText = '❌ ' + (response.data ? response.data.message : 'Gagal membaca berkas.');
+									errorEl.style.display = 'block';
+								}
+							}, 150);
 						}).fail(function() {
 							loadingEl.style.display = 'none';
 							errorEl.innerText = '❌ Terjadi kesalahan koneksi server saat membaca berkas.';
@@ -1427,8 +1442,14 @@ class Admin {
 
 					function closeCodeInspector() {
 						var modal = document.getElementById('rg-code-modal');
-						if (modal) modal.classList.add('hidden');
+						if (modal) modal.style.display = 'none';
 					}
+
+					document.addEventListener('keydown', function(e) {
+						if (e.key === 'Escape') {
+							closeCodeInspector();
+						}
+					});
 
 					function toggleSelectAllTable(masterCheckbox) {
 						var table = masterCheckbox.closest('table');
