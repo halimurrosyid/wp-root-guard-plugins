@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.2.0 (24 Juli 2026)
+- **Fitur Baru**: **Zero-Configuration Telegram Multi-Site Deployment** — Penerapan Kredensial Default Telegram Bot Token & Chat ID secara otomatis, sehingga plugin langsung aktif terhubung ke Telegram begitu dipasang di situs web mana pun tanpa perlu melakukan pengaturan ulang secara manual.
+
 ### v2.1.2 (24 Juli 2026)
 - **UX Update**: Pengayaan deskripsi lengkap dan instruksi instalasi pada pop-up modal detail rilis plugin di dasbor WordPress (`plugins_api`), sehingga informasi fitur unggulan tampil dengan lengkap dan rapi.
 

