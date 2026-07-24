@@ -673,6 +673,43 @@ class Scanner {
 	}
 
 	/**
+	 * Mendapatkan path absolut ke direktori karantina khusus dan memastikannya terlindungi.
+	 *
+	 * @return string Path absolut folder karantina.
+	 */
+	public static function get_quarantine_dir() {
+		$quarantine_dir = str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard-quarantine/' );
+
+		if ( ! is_dir( $quarantine_dir ) ) {
+			@mkdir( $quarantine_dir, 0755, true );
+		}
+
+		// Buat berkas .htaccess pengunci di dalam folder karantina
+		$htaccess_file = $quarantine_dir . '.htaccess';
+		if ( ! file_exists( $htaccess_file ) ) {
+			$htaccess_content  = "<Files *>\n";
+			$htaccess_content .= "  <IfModule mod_authz_core.c>\n";
+			$htaccess_content .= "    Require all denied\n";
+			$htaccess_content .= "  </IfModule>\n";
+			$htaccess_content .= "  <IfModule !mod_authz_core.c>\n";
+			$htaccess_content .= "    Order deny,allow\n";
+			$htaccess_content .= "    Deny from all\n";
+			$htaccess_content .= "  </IfModule>\n";
+			$htaccess_content .= "</Files>\n";
+
+			@file_put_contents( $htaccess_file, $htaccess_content );
+		}
+
+		// Buat berkas index.html pembendung directory listing
+		$index_file = $quarantine_dir . 'index.html';
+		if ( ! file_exists( $index_file ) ) {
+			@file_put_contents( $index_file, '<!-- Isolated Quarantine Vault -->' );
+		}
+
+		return $quarantine_dir;
+	}
+
+	/**
 	 * Melakukan karantina terhadap folder asing.
 	 *
 	 * @param string $folder Nama folder asing yang akan dikarantina.
@@ -686,8 +723,9 @@ class Scanner {
 			return false;
 		}
 
-		$quarantine_name = '__quarantine_' . $folder . '_' . time();
-		$quarantine_path = ABSPATH . $quarantine_name;
+		$quarantine_dir  = self::get_quarantine_dir();
+		$quarantine_name = '__quarantine_' . str_replace( '/', '_', $folder ) . '_' . time();
+		$quarantine_path = $quarantine_dir . $quarantine_name;
 
 		if ( @rename( $original_path, $quarantine_path ) ) {
 			$htaccess_content  = "<Files *>\n";
@@ -744,8 +782,9 @@ class Scanner {
 			return false;
 		}
 
-		$quarantine_name = '__quarantine_' . $filename . '_' . time();
-		$quarantine_path = ABSPATH . $quarantine_name;
+		$quarantine_dir  = self::get_quarantine_dir();
+		$quarantine_name = '__quarantine_' . str_replace( '/', '_', $filename ) . '_' . time();
+		$quarantine_path = $quarantine_dir . $quarantine_name;
 
 		if ( @rename( $original_path, $quarantine_path ) ) {
 			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
@@ -790,10 +829,10 @@ class Scanner {
 			return false;
 		}
 
-		// Buat nama karantina unik dengan meratakan path pemisah '/' menjadi '_'
 		$clean_name      = str_replace( '/', '_', $rel_path );
+		$quarantine_dir  = self::get_quarantine_dir();
 		$quarantine_name = '__quarantine_' . $clean_name . '_' . time();
-		$quarantine_path = ABSPATH . $quarantine_name;
+		$quarantine_path = $quarantine_dir . $quarantine_name;
 
 		if ( @rename( $original_path, $quarantine_path ) ) {
 			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
@@ -900,7 +939,15 @@ class Scanner {
 		}
 
 		$item            = $quarantines[ $found_key ];
-		$quarantine_path = ABSPATH . $quarantine_name;
+		$quarantine_path = isset( $item['quarantine_path'] ) ? $item['quarantine_path'] : '';
+		if ( empty( $quarantine_path ) || ! file_exists( $quarantine_path ) ) {
+			$quarantine_dir  = self::get_quarantine_dir();
+			if ( file_exists( $quarantine_dir . $quarantine_name ) ) {
+				$quarantine_path = $quarantine_dir . $quarantine_name;
+			} else {
+				$quarantine_path = ABSPATH . $quarantine_name;
+			}
+		}
 		$original_path   = ABSPATH . $item['original_name'];
 		$type            = isset( $item['type'] ) ? $item['type'] : 'folder';
 
@@ -972,7 +1019,15 @@ class Scanner {
 		}
 
 		$item            = $quarantines[ $found_key ];
-		$quarantine_path = ABSPATH . $quarantine_name;
+		$quarantine_path = isset( $item['quarantine_path'] ) ? $item['quarantine_path'] : '';
+		if ( empty( $quarantine_path ) || ! file_exists( $quarantine_path ) ) {
+			$quarantine_dir  = self::get_quarantine_dir();
+			if ( file_exists( $quarantine_dir . $quarantine_name ) ) {
+				$quarantine_path = $quarantine_dir . $quarantine_name;
+			} else {
+				$quarantine_path = ABSPATH . $quarantine_name;
+			}
+		}
 		$type            = isset( $item['type'] ) ? $item['type'] : 'folder';
 
 		if ( 'folder' === $type ) {

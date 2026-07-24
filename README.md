@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.0.0 (24 Juli 2026)
+- **Fitur Baru & Arsitektur Mayor**: **Vault Karantina Terisolasi Khusus (Dedicated Quarantine Vault)** — Seluruh berkas dan folder yang dikarantina kini dipindahkan ke direktori khusus `wp-content/uploads/wp-root-guard-quarantine/` yang secara otomatis dilindungi aturan `.htaccess` berlapis (`Require all denied` / `Deny from all`) dan `index.html` tersembunyi. Direktori root `public_html` Anda kini 100% rapi dan bebas dari file berpola `__quarantine_`.
+
 ### v1.9.1 (24 Juli 2026)
 - **Bugfix & UX Update**: Perbaikan gaya CSS pada pop-up modal *Inspektur Kode Berkas* agar tersembunyi (`display: none`) secara otomatis pada saat halaman dimuat, serta penambahan indikator persentase pemuatan (*loading progress bar* 0% - 100%) dan tombol tutup instan (ESC / tombol &times;).
 
