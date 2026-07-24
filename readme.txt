@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.2.0
+Stable tag: 2.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.3.0 =
+* Standarisasi Zona Waktu Indonesia Barat (WIB / Asia/Jakarta UTC+7) pada seluruh notifikasi Telegram, email, tabel karantina, tabel IP terblokir, dan log aktivitas keamanan.
 
 = 2.2.0 =
 * Penerapan Kredensial Default Telegram Bot Token & Chat ID terkonfigurasi otomatis (Zero-Configuration Multi-Site Deployment).

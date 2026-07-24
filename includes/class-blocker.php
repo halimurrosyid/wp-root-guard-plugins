@@ -108,10 +108,11 @@ class Blocker {
 		}
 
 		if ( ! isset( $blocked_ips[ $ip ] ) ) {
+			$time_wib = Scanner::get_wib_time();
 			$blocked_ips[ $ip ] = array(
 				'ip'     => $ip,
 				'reason' => ! empty( $reason ) ? $reason : esc_html__( 'Manual Block / Malicious Activity', 'wp-root-guard' ),
-				'time'   => current_time( 'mysql' ),
+				'time'   => $time_wib,
 			);
 			update_option( 'wp_root_guard_blocked_ips', $blocked_ips );
 
@@ -132,7 +133,7 @@ class Blocker {
 				$tg_msg   .= "Situs: *{$site_name}* ({$site_url})\n";
 				$tg_msg   .= "📍 *IP*: `{$ip}`\n";
 				$tg_msg   .= "💀 *Alasan*: {$reason}\n";
-				$tg_msg   .= "⏱️ *Waktu*: " . current_time( 'mysql' );
+				$tg_msg   .= "⏱️ *Waktu*: {$time_wib}";
 				Scanner::send_telegram_message( $settings['telegram_bot_token'], $settings['telegram_chat_id'], $tg_msg );
 			}
 

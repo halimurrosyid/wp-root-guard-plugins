@@ -39,7 +39,7 @@ class Logger {
 		}
 
 		$new_entry = array(
-			'time'        => current_time( 'mysql' ),
+			'time'        => Scanner::get_wib_time(),
 			'event'       => sanitize_text_field( $event ),
 			'folder_name' => sanitize_text_field( $folder_name ),
 			'status'      => sanitize_text_field( $status ),

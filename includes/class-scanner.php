@@ -21,12 +21,60 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Scanner {
 
 	/**
+	 * Mendapatkan string tanggal dan waktu berformat WIB (Waktu Indonesia Barat / Asia/Jakarta UTC+7).
+	 *
+	 * @param int|string|null $time Unix timestamp atau string mysql time.
+	 * @return string Tanggal dan waktu berformat WIB (contoh: 24 Juli 2026 15:12 WIB).
+	 */
+	public static function get_wib_time( $time = null ) {
+		if ( null === $time || '' === $time ) {
+			$timestamp = time();
+		} elseif ( is_numeric( $time ) ) {
+			$timestamp = (int) $time;
+		} else {
+			$timestamp = strtotime( $time );
+			if ( false === $timestamp ) {
+				$timestamp = time();
+			}
+		}
+
+		try {
+			$dt = new \DateTime( '@' . $timestamp );
+			$dt->setTimezone( new \DateTimeZone( 'Asia/Jakarta' ) );
+
+			$bulan = array(
+				1  => 'Januari',
+				2  => 'Februari',
+				3  => 'Maret',
+				4  => 'April',
+				5  => 'Mei',
+				6  => 'Juni',
+				7  => 'Juli',
+				8  => 'Agustus',
+				9  => 'September',
+				10 => 'Oktober',
+				11 => 'November',
+				12 => 'Desember',
+			);
+
+			$day   = $dt->format( 'j' );
+			$month = $bulan[ (int) $dt->format( 'n' ) ];
+			$year  = $dt->format( 'Y' );
+			$clock = $dt->format( 'H:i' );
+
+			return "{$day} {$month} {$year} {$clock} WIB";
+		} catch ( \Exception $e ) {
+			return date_i18n( 'j F Y H:i', current_time( 'timestamp' ) ) . ' WIB';
+		}
+	}
+
+	/**
 	 * Melakukan pemindaian root directory secara menyeluruh (folder, berkas root, dan integritas core).
 	 *
 	 * @return array Hasil pemindaian berupa status proteksi dan daftar ancaman terdeteksi.
 	 */
 	public static function perform_scan() {
-		$detection_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), current_time( 'timestamp' ) );
+		$detection_time = self::get_wib_time();
 
 		// 1. Dapatkan folder & berkas saat ini di root.
 		$current_folders = Baseline::scan_root_folders();
@@ -751,7 +799,7 @@ class Scanner {
 				'quarantine_name' => $quarantine_name,
 				'original_path'   => $original_path,
 				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => current_time( 'mysql' ),
+				'quarantine_time' => self::get_wib_time(),
 			);
 
 			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
@@ -798,7 +846,7 @@ class Scanner {
 				'quarantine_name' => $quarantine_name,
 				'original_path'   => $original_path,
 				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => current_time( 'mysql' ),
+				'quarantine_time' => self::get_wib_time(),
 			);
 
 			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
@@ -846,7 +894,7 @@ class Scanner {
 				'quarantine_name' => $quarantine_name,
 				'original_path'   => $original_path,
 				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => current_time( 'mysql' ),
+				'quarantine_time' => self::get_wib_time(),
 			);
 
 			update_option( 'wp_root_guard_quarantined_folders', $quarantines );

@@ -1155,7 +1155,7 @@ class Admin {
 											<td><code><?php echo esc_html( $type_label ); ?></code></td>
 											<td><strong><?php echo esc_html( $item['original_name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $item['quarantine_name'] ); ?></code></td>
-											<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item['quarantine_time'] ) ) ); ?></td>
+											<td><?php echo esc_html( Scanner::get_wib_time( $item['quarantine_time'] ) ); ?></td>
 											<td><span class="rg-badge badge-safe">🔒 <?php echo esc_html( $status_label ); ?></span></td>
 											<td>
 												<?php if ( isset( $item['type'] ) && 'file' === $item['type'] ) : ?>
@@ -1216,7 +1216,7 @@ class Admin {
 										<tr>
 											<td><strong class="text-danger"><code><?php echo esc_html( $item['ip'] ); ?></code></strong></td>
 											<td><?php echo esc_html( $item['reason'] ); ?></td>
-											<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item['time'] ) ) ); ?></td>
+											<td><?php echo esc_html( Scanner::get_wib_time( $item['time'] ) ); ?></td>
 											<td>
 												<button type="button" class="button button-small button-secondary" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membuka blokir IP ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('unblock_ip', '<?php echo esc_js( $item['ip'] ); ?>'); }">
 													🔓 <?php esc_html_e( 'Unblock IP', 'wp-root-guard' ); ?>
@@ -1297,7 +1297,7 @@ class Admin {
 									<tbody>
 										<?php foreach ( $logs as $log ) : ?>
 											<tr>
-												<td><?php echo esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $log['time'] ) ) ); ?></td>
+												<td><?php echo esc_html( Scanner::get_wib_time( $log['time'] ) ); ?></td>
 												<td><?php echo esc_html( $log['event'] ); ?></td>
 												<td><code><?php echo esc_html( $log['folder_name'] ); ?></code></td>
 												<td>

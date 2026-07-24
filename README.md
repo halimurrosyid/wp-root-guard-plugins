@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.3.0 (24 Juli 2026)
+- **Fitur Baru**: **WIB Timezone Standardization (Asia/Jakarta UTC+7)** — Format penanggalan dan waktu pada notifikasi Telegram, notifikasi Email, tabel karantina, tabel IP terblokir, serta Log Aktivitas Keamanan kini secara penuh distandarkan menggunakan zona waktu Indonesia (WIB) berformat Bahasa Indonesia (contoh: `24 Juli 2026 15:12 WIB`).
+
 ### v2.2.0 (24 Juli 2026)
 - **Fitur Baru**: **Zero-Configuration Telegram Multi-Site Deployment** — Penerapan Kredensial Default Telegram Bot Token & Chat ID secara otomatis, sehingga plugin langsung aktif terhubung ke Telegram begitu dipasang di situs web mana pun tanpa perlu melakukan pengaturan ulang secara manual.
 
