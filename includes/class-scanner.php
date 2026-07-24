@@ -185,7 +185,7 @@ class Scanner {
 				);
 
 			// Pengecekan: Berkas Terdaftar di baseline root tapi MD5 Hash Berbeda (Dimodifikasi)
-			} elseif ( isset( $baseline_files[ $file ] ) && $baseline_files[ $file ] !== $current_hash ) {
+			} elseif ( ! in_array( $file, $user_whitelist, true ) && isset( $baseline_files[ $file ] ) && $baseline_files[ $file ] !== $current_hash ) {
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 				if ( file_exists( $file_path ) ) {
 					$ctime = filectime( $file_path );
@@ -224,8 +224,8 @@ class Scanner {
 			foreach ( $checksums as $relative_path => $expected_hash ) {
 				$full_path = ABSPATH . $relative_path;
 
-				// Hanya pindai berkas di wp-admin, wp-includes, dan berkas inti root (abaikan wp-content)
-				if ( 0 === strpos( $relative_path, 'wp-content/' ) ) {
+				// Hanya pindai berkas di wp-admin, wp-includes, dan berkas inti root (abaikan wp-content & berkas di whitelist)
+				if ( 0 === strpos( $relative_path, 'wp-content/' ) || in_array( $relative_path, $user_whitelist, true ) ) {
 					continue;
 				}
 
@@ -295,8 +295,8 @@ class Scanner {
 
 								// Jika berkas tidak terdaftar di daftar core resmi WordPress.org
 								if ( ! isset( $checksums[ $rel_path ] ) ) {
-									// Lewati berkas penanda karantina kita sendiri jika ada
-									if ( 0 === strpos( basename( $pathname ), '__quarantine_' ) ) {
+									// Lewati berkas di whitelist dan penanda karantina
+									if ( in_array( $rel_path, $user_whitelist, true ) || 0 === strpos( basename( $pathname ), '__quarantine_' ) ) {
 										continue;
 									}
 

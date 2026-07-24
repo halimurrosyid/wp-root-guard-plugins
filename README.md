@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.3.1 (24 Juli 2026)
+- **Bugfix**: Perbaikan pengabaian Whitelist Kustom (`user_whitelist`) pada berkas terdaftar yang mengalami perubahan nilai hash MD5 (seperti `.htaccess`), sehingga berkas yang sudah dipercayai tidak akan lagi dimunculkan kembali sebagai ancaman modifikasi.
+
 ### v2.3.0 (24 Juli 2026)
 - **Fitur Baru**: **WIB Timezone Standardization (Asia/Jakarta UTC+7)** — Format penanggalan dan waktu pada notifikasi Telegram, notifikasi Email, tabel karantina, tabel IP terblokir, serta Log Aktivitas Keamanan kini secara penuh distandarkan menggunakan zona waktu Indonesia (WIB) berformat Bahasa Indonesia (contoh: `24 Juli 2026 15:12 WIB`).
 
