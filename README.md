@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.1.2 (24 Juli 2026)
+- **UX Update**: Pengayaan deskripsi lengkap dan instruksi instalasi pada pop-up modal detail rilis plugin di dasbor WordPress (`plugins_api`), sehingga informasi fitur unggulan tampil dengan lengkap dan rapi.
+
 ### v2.1.1 (24 Juli 2026)
 - **Bugfix**: Perbaikan *Fatal Error* / *HTTP Error 500* saat pengiriman pesan uji coba Telegram karena belum terdeklarasikannya metode `Scanner::send_telegram_message()`.
 

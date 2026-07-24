@@ -146,9 +146,28 @@ class Updater {
 		$obj->author         = '<a href="https://ajidmujaddid.staff.telkomuniversity.ac.id/" target="_blank">Mujaddid Halimurrosyid</a>';
 		$obj->homepage       = "https://github.com/{$this->username}/{$this->repository}";
 		$obj->download_link  = $this->get_package_url( $release );
-		$obj->sections       = array(
-			'description' => esc_html__( 'Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.', 'wp-root-guard' ),
-			'changelog'   => isset( $release['body'] ) ? nl2br( esc_html( $release['body'] ) ) : '',
+		$description_html  = '<p><strong>WP Root Guard</strong> adalah plugin keamanan WordPress profesional, super ringan, dan efisien yang dirancang khusus untuk melindungi direktori root (<code>public_html</code>), direktori sistem (<code>wp-admin</code> &amp; <code>wp-includes</code>), serta folder media (<code>wp-content/uploads/</code>) dari serangan malware judi slot, backdoor, dan webshell injection.</p>';
+		$description_html .= '<h4>🛡️ Fitur Keamanan Unggulan:</h4>';
+		$description_html .= '<ul>';
+		$description_html .= '<li><strong>Integritas Core Checksums WordPress.org API</strong>: Mendeteksi modifikasi, pemalsuan, atau penghapusan berkas core resmi WordPress secara real-time.</li>';
+		$description_html .= '<li><strong>Perbaikan Berkas Core Otomatis</strong>: Memulihkan berkas core yang rusak/terinjeksi secara instan langsung dari SVN resmi WordPress.org.</li>';
+		$description_html .= '<li><strong>Uploads PHP Security Guard</strong>: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media <code>wp-content/uploads/</code>.</li>';
+		$description_html .= '<li><strong>Attacker IP Blocker &amp; .htaccess Access Guard</strong>: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di <code>.htaccess</code>.</li>';
+		$description_html .= '<li><strong>Inspektur Kode Berkas (Secure Code Inspector)</strong>: Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).</li>';
+		$description_html .= '<li><strong>Notifikasi Instan Real-Time</strong>: Pengiriman notifikasi peringatan instan ke Telegram Bot API dan Email Administrator.</li>';
+		$description_html .= '<li><strong>Vault Karantina Terisolasi Khusus</strong>: Menyimpan seluruh berkas terisolasi di <code>wp-content/uploads/wp-root-guard-quarantine/</code> yang dikunci ketat dengan <code>.htaccess</code>.</li>';
+		$description_html .= '</ul>';
+
+		$installation_html  = '<ol>';
+		$installation_html .= '<li>Unggah folder <code>wp-root-guard</code> ke direktori <code>/wp-content/plugins/</code>.</li>';
+		$installation_html .= '<li>Aktifkan plugin melalui menu <strong>Plugins</strong> di dasbor WordPress.</li>';
+		$installation_html .= '<li>Buka menu <strong>Dashboard -&gt; Root Guard</strong> untuk memantau status keamanan situs Anda.</li>';
+		$installation_html .= '</ol>';
+
+		$obj->sections = array(
+			'description'  => $description_html,
+			'installation' => $installation_html,
+			'changelog'    => isset( $release['body'] ) ? nl2br( esc_html( $release['body'] ) ) : '',
 		);
 
 		return $obj;

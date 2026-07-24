@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.1.1
+Stable tag: 2.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,9 +12,18 @@ Mendeteksi folder, berkas asing, perubahan berkas core (wp-admin, wp-includes, r
 
 == Description ==
 
-WP Root Guard adalah plugin keamanan WordPress yang sangat ringan dan efisien. Plugin ini dirancang khusus untuk mendeteksi folder, berkas asing, serta menjaga integritas berkas core di direktori root WordPress Anda (`ABSPATH` / `public_html`), serta folder sistem `wp-admin` dan `wp-includes` dari ancaman malware judi slot atau webshell backdoor.
+WP Root Guard adalah plugin keamanan WordPress profesional, super ringan, dan efisien yang dirancang khusus untuk melindungi direktori root (`public_html`), direktori sistem (`wp-admin` & `wp-includes`), serta folder media (`wp-content/uploads/`) dari serangan malware judi slot, backdoor, dan webshell injection.
 
 Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi perubahan isi kode berkas core, kehilangan berkas core, atau adanya berkas asing penyusup di dalam folder core. Dilengkapi visualisasi komparasi perbedaan kode (diff view) dan tombol perbaikan otomatis untuk memulihkan berkas core dari SVN WordPress.org secara instan.
+
+= Fitur Keamanan Unggulan =
+* Integritas Core Checksums WordPress.org API: Mendeteksi modifikasi, pemalsuan, atau penghapusan berkas core resmi WordPress secara real-time.
+* Perbaikan Berkas Core Otomatis: Memulihkan berkas core yang rusak/terinjeksi secara instan langsung dari SVN resmi WordPress.org.
+* Uploads PHP Security Guard: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media wp-content/uploads/.
+* Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
+* Inspektur Kode Berkas (Secure Code Inspector): Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).
+* Notifikasi Instan Real-Time: Pengiriman notifikasi peringatan instan ke Telegram Bot API dan Email Administrator.
+* Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ yang dikunci ketat dengan .htaccess.
 
 == Installation ==
 
@@ -31,6 +40,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.1.2 =
+* Pengayaan deskripsi rincian fitur keamanan lengkap dan instruksi instalasi di modal detail plugin WordPress (plugins_api).
 
 = 2.1.1 =
 * Perbaikan Fatal Error / Error 500 saat melakukan uji coba kirim notifikasi Telegram (penambahan metode send_telegram_message yang hilang).
