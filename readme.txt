@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.7.0
+Stable tag: 2.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,13 +18,14 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 
 = Fitur Keamanan Unggulan =
 * Integritas Core Checksums WordPress.org API: Mendeteksi modifikasi, pemalsuan, atau penghapusan berkas core resmi WordPress secara real-time.
+* Desain Tampilan Modern & Intuitive UI/UX: Bar Aksi Massal Melayang (Sticky Bulk Action Bar), Badge Ringkasan Jumlah Ancaman, dan Tata Letak Responsif.
 * Perbaikan Berkas Core Masal (Bulk Restore): Memulihkan seluruh berkas core tercentang/terpilih sekaligus langsung dari SVN resmi WordPress.org.
 * Waktu Modifikasi Berkas Real-Time (WIB): Menampilkan tanggal dan jam modifikasi berkas core terdeteksi dalam format Waktu Indonesia Barat (WIB).
 * Uploads PHP Security Guard: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media wp-content/uploads/.
 * Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
 * Inspektur Kode Berkas (Secure Code Inspector): Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).
 * Notifikasi Telegram Read-Only murni 100%: Pengiriman notifikasi peringatan instan ke Telegram Bot API yang murni bersifat informasi saja tanpa membuka endpoint eksekusi eksternal.
-* Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ yang dikunci ketat dengan .htaccess.
+* Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ mebnggunakan .htaccess.
 
 == Installation ==
 
@@ -41,6 +42,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.8.0 =
+* Redesain UI/UX Mayor: Implementasi Sticky Floating Bulk Action Bar (melayang saat scroll), penambahan Badge Ringkasan Jumlah Ancaman di setiap header tabel, dan penyempurnaan estetika tombol serta tata letak responsif.
 
 = 2.7.0 =
 * Fitur Utama Baru: Penambahan pilihan "🛠️ Perbaiki Core Masal (Unduh dari WordPress.org)" pada Bar Aksi Massal (Bulk Actions), memungkinkan Administrator memulihkan seluruh berkas core yang dimodifikasi sekaligus dengan 1-klik.

@@ -873,9 +873,15 @@ class Admin {
 				<?php endif; ?>
 
 				<!-- TABEL 1: HASIL PEMINDAIAN FOLDER ASING -->
-				<div class="rg-card rg-table-card">
-					<div class="rg-card-header">
-						<h2>📂 <?php esc_html_e( 'Hasil Scan: Folder Asing Aktif', 'wp-root-guard' ); ?></h2>
+					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+							📂 <?php esc_html_e( 'Hasil Scan: Folder Asing Aktif', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_folders ) ) : ?>
+								<span class="rg-badge badge-danger"><?php echo count( $active_folders ); ?> Folder Terdeteksi</span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Bersih</span>
+							<?php endif; ?>
+						</h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $active_folders ) ) : ?>
@@ -918,9 +924,15 @@ class Admin {
 				</div>
 
 				<!-- TABEL 2: INTEGRITAS BERKAS CORE WORDPRESS (wp-admin, wp-includes, root core) -->
-				<div class="rg-card rg-table-card">
-					<div class="rg-card-header">
-						<h2>🛡️ <?php esc_html_e( 'Hasil Scan: Integritas Berkas Core (wp-admin, wp-includes, root)', 'wp-root-guard' ); ?></h2>
+					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+							🛡️ <?php esc_html_e( 'Hasil Scan: Integritas Berkas Core (wp-admin, wp-includes, root)', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_core ) ) : ?>
+								<span class="rg-badge badge-warning"><?php echo count( $active_core ); ?> Berkas Terindikasi</span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Aman</span>
+							<?php endif; ?>
+						</h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $active_core ) ) : ?>
@@ -1004,9 +1016,15 @@ class Admin {
 				</div>
 
 				<!-- TABEL 3: HASIL PEMINDAIAN BERKAS ASING DI ROOT -->
-				<div class="rg-card rg-table-card">
-					<div class="rg-card-header">
-						<h2>📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing Aktif di Root', 'wp-root-guard' ); ?></h2>
+					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+							📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing Aktif di Root', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_files ) ) : ?>
+								<span class="rg-badge badge-danger"><?php echo count( $active_files ); ?> Berkas Terdeteksi</span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Bersih</span>
+							<?php endif; ?>
+						</h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $active_files ) ) : ?>
@@ -1076,8 +1094,15 @@ class Admin {
 
 				<!-- TABEL 4: HASIL PEMINDAIAN BERKAS PHP DI FOLDER UPLOADS -->
 				<div class="rg-card rg-table-card">
-					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca;">
-						<h2 style="color: #991b1b;">🚨 <?php esc_html_e( 'Hasil Scan: Berkas PHP Mencurigakan di Folder Uploads (wp-content/uploads)', 'wp-root-guard' ); ?></h2>
+					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca; display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
+							🚨 <?php esc_html_e( 'Hasil Scan: Berkas PHP Mencurigakan di Folder Uploads (wp-content/uploads)', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_uploads ) ) : ?>
+								<span class="rg-badge badge-danger"><?php echo count( $active_uploads ); ?> Skrip Berbahaya</span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Bersih</span>
+							<?php endif; ?>
+						</h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $active_uploads ) ) : ?>
@@ -1138,8 +1163,13 @@ class Admin {
 					</form>
 				<?php endif; ?>
 				<div class="rg-card rg-table-card">
-					<div class="rg-card-header">
-						<h2>🔒 <?php esc_html_e( 'Daftar Karantina (Quarantined Folders & Files)', 'wp-root-guard' ); ?></h2>
+					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+							🔒 <?php esc_html_e( 'Daftar Karantina (Quarantined Folders & Files)', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $quarantined ) ) : ?>
+								<span class="rg-badge badge-warning"><?php echo count( $quarantined ); ?> Item Diisolasi</span>
+							<?php endif; ?>
+						</h2>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $quarantined ) ) : ?>

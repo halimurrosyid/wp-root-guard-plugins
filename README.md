@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.8.0 (27 Juli 2026)
+- **Redesain Tampilan & UI/UX Mayor**: **Sticky Floating Bulk Action Bar & Intuitive Threat Badging** — Bar Aksi Massal kini melayang secara dinamis (*Sticky*) saat pengguna menggeser (*scroll*) halaman, dilengkapi *Badge Ringkasan Jumlah Ancaman* pada setiap header tabel, dan penyempurnaan tombol aksi agar jauh lebih intuitif dan mudah digunakan.
+
 ### v2.7.0 (27 Juli 2026)
 - **Fitur Utama Baru**: **Pemulihan Berkas Core Masal (Bulk Core Auto-Repair)** — Menambahkan pilihan `🛠️ Perbaiki Core Masal (Unduh dari WordPress.org)` pada *Bar Aksi Massal (Bulk Actions)*. Administrator kini dapat mencentang semua berkas core yang terindikasi berubah/dimodifikasi lalu menekan tombol **Terapkan (Apply)** untuk memulihkan seluruh berkas tersebut secara otomatis langsung dari SVN resmi WordPress.org dalam 1 kali klik.
 
