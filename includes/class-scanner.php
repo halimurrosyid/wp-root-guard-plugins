@@ -274,6 +274,8 @@ class Scanner {
 							continue;
 						}
 
+						$file_mtime        = file_exists( $full_path ) ? filemtime( $full_path ) : false;
+						$mod_time          = $file_mtime ? self::get_wib_time( $file_mtime ) : $detection_time;
 						$malware_indicator = self::scan_file_for_webshell( $full_path );
 						$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Perubahan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Integritas Berkas Berubah', 'wp-root-guard' );
 
@@ -281,8 +283,8 @@ class Scanner {
 							'type'              => 'core_file',
 							'name'              => $relative_path,
 							'path'              => $full_path,
-							'created_time'      => '-',
-							'detection_time'    => $detection_time,
+							'created_time'      => $mod_time,
+							'detection_time'    => $mod_time,
 							'status'            => 'Modified Core File',
 							'malware_indicator' => $malware_label,
 						);
@@ -318,12 +320,12 @@ class Scanner {
 									}
 
 									$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
-									$ctime = $fileinfo->getCTime();
-									if ( false !== $ctime ) {
-										$created_time = date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $ctime );
+									$mtime        = $fileinfo->getMTime();
+									if ( false !== $mtime ) {
+										$created_time = self::get_wib_time( $mtime );
 									}
 
-									$status_text    = esc_html__( 'Suspicious Core Injection', 'wp-root-guard' );
+									$status_text       = esc_html__( 'Suspicious Core Injection', 'wp-root-guard' );
 									$malware_indicator = self::scan_file_for_webshell( $pathname );
 									$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Penyusupan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas Penyusup di Folder Core', 'wp-root-guard' );
 
@@ -336,7 +338,7 @@ class Scanner {
 										}
 									} else {
 										Logger::log(
-											esc_html__( 'Penyusupan berkas core terdeteksi', 'wp-root-guard' ),
+											esc_html__( 'Berkas penyusup asing di folder core terdeteksi', 'wp-root-guard' ),
 											$rel_path,
 											$malware_indicator ? esc_html__( 'Malware Suspicious', 'wp-root-guard' ) : esc_html__( 'Unknown', 'wp-root-guard' )
 										);
@@ -347,7 +349,7 @@ class Scanner {
 										'name'              => $rel_path,
 										'path'              => $pathname,
 										'created_time'      => $created_time,
-										'detection_time'    => $detection_time,
+										'detection_time'    => $created_time,
 										'status'            => $status_text,
 										'malware_indicator' => $malware_label,
 									);

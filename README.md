@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.6.0 (27 Juli 2026)
+- **Fitur Baru**: **Kolom Waktu Modifikasi Berkas Core (WIB)** — Menambahkan kolom *Waktu Modifikasi / Terdeteksi* pada Tabel Integritas Berkas Core (`wp-admin`, `wp-includes`, `root`) dengan format Waktu Indonesia Barat (WIB), sehingga Administrator dapat melihat tanggal dan jam tepat kapan berkas core dimodifikasi atau disusupi.
+
 ### v2.5.1 (27 Juli 2026)
 - **Bugfix & Akurasi Pemindaian**: **Penyelesaian Diskrepan Line-Ending (CRLF vs LF)** — Menambahkan normalisasi otomatis karakter perpindahan baris (`\r\n` ke `\n`) saat menghitung MD5 hash berkas core, sehingga berkas asli resmi tidak akan lagi mengalami *false positive* (terdeteksi dimodifikasi padahal kodenya sama persis).
 

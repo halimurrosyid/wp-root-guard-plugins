@@ -924,6 +924,7 @@ class Admin {
 										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Keadaan Berkas / Indikasi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Modifikasi / Terdeteksi', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
 										<th style="width: 250px;"><?php esc_html_e( 'Aksi Pemulihan', 'wp-root-guard' ); ?></th>
 									</tr>
@@ -942,6 +943,7 @@ class Admin {
 													<?php echo esc_html( $file['malware_indicator'] ); ?>
 												</span>
 											</td>
+											<td><?php echo esc_html( isset( $file['detection_time'] ) ? $file['detection_time'] : '-' ); ?></td>
 											<td>
 												<?php
 												$status_label = $file['status'];

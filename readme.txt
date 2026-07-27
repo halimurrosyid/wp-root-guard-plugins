@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.5.1
+Stable tag: 2.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,6 +18,7 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 
 = Fitur Keamanan Unggulan =
 * Integritas Core Checksums WordPress.org API: Mendeteksi modifikasi, pemalsuan, atau penghapusan berkas core resmi WordPress secara real-time.
+* Waktu Modifikasi Berkas Real-Time (WIB): Menampilkan tanggal dan jam modifikasi berkas core terdeteksi dalam format Waktu Indonesia Barat (WIB).
 * Perbaikan Berkas Core Otomatis: Memulihkan berkas core yang rusak/terinjeksi secara instan langsung dari SVN resmi WordPress.org.
 * Uploads PHP Security Guard: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media wp-content/uploads/.
 * Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
@@ -40,6 +41,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.6.0 =
+* Fitur Baru: Penambahan kolom Waktu Modifikasi / Terdeteksi pada Tabel Integritas Berkas Core (wp-admin, wp-includes, root) berformat WIB untuk mempermudah audit forensik tanggal & jam modifikasi berkas.
 
 = 2.5.1 =
 * Perbaikan masalah False Positive pada pemindaian Integritas Berkas Core akibat perbedaan line ending (CRLF vs LF) antar platform server/Git/FTP (penambahan normalisasi otomatis CRLF ke LF).
