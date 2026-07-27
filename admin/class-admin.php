@@ -13,7 +13,6 @@ use WPRootGuard\Scanner;
 use WPRootGuard\Logger;
 use WPRootGuard\Cron;
 use WPRootGuard\Blocker;
-use WPRootGuard\TelegramWebhook;
 
 // Mencegah akses langsung.
 if ( ! defined( 'ABSPATH' ) ) {
@@ -348,21 +347,8 @@ class Admin {
 					'telegram_chat_id'             => isset( $_POST['telegram_chat_id'] ) ? sanitize_text_field( $_POST['telegram_chat_id'] ) : '',
 				);
 				Settings::update_settings( $settings_data );
-				if ( ! empty( $settings_data['telegram_bot_token'] ) ) {
-					TelegramWebhook::register_webhook_with_telegram( $settings_data['telegram_bot_token'] );
-				}
 				Logger::log( esc_html__( 'Pengaturan plugin diperbarui', 'wp-root-guard' ), '-', esc_html__( 'Success', 'wp-root-guard' ) );
 				wp_safe_redirect( add_query_arg( 'message', 'settings_saved', $redirect_url ) );
-				exit;
-
-			case 'sync_telegram_webhook':
-				$token   = isset( $_POST['telegram_bot_token'] ) ? sanitize_text_field( $_POST['telegram_bot_token'] ) : '';
-				$success = TelegramWebhook::register_webhook_with_telegram( $token );
-				if ( $success ) {
-					wp_safe_redirect( add_query_arg( 'message', 'tg_webhook_success', $redirect_url ) );
-				} else {
-					wp_safe_redirect( add_query_arg( 'message', 'tg_webhook_failed', $redirect_url ) );
-				}
 				exit;
 
 			case 'test_telegram':
@@ -371,11 +357,9 @@ class Admin {
 				
 				$site_name = get_bloginfo( 'name' );
 				$site_url  = home_url();
-				$message   = "🔔 *[WP Root Guard] Pesan Uji Coba Tombol Interaktif!*\n\nKoneksi bot Telegram Anda ke situs *{$site_name}* ({$site_url}) berhasil terhubung dengan sukses.\n\nCobalah menekan salah satu tombol di bawah untuk menguji respons cepat:";
+				$message   = "🔔 *[WP Root Guard] Pesan Uji Coba!*\n\nKoneksi bot Telegram Anda ke situs *{$site_name}* ({$site_url}) berhasil terhubung dengan sukses.";
 
-				$reply_markup = Scanner::generate_telegram_action_buttons( 'file', 'test_sample.php' );
-				$success      = Scanner::send_telegram_message( $token, $chat_id, $message, $reply_markup );
-				TelegramWebhook::register_webhook_with_telegram( $token );
+				$success = Scanner::send_telegram_message( $token, $chat_id, $message );
 				
 				if ( $success ) {
 					wp_safe_redirect( add_query_arg( 'message', 'tg_test_success', $redirect_url ) );
@@ -612,13 +596,6 @@ class Admin {
 			case 'tg_test_failed':
 				$notice_class = 'notice-error';
 				$notice_text  = esc_html__( 'Gagal mengirim pesan ke Telegram. Mohon periksa Bot Token dan Chat ID Anda.', 'wp-root-guard' );
-				break;
-			case 'tg_webhook_success':
-				$notice_text = esc_html__( 'URL Webhook REST API berhasil didaftarkan ke Telegram Bot API dengan Secret Token Kriptografi 64-bit!', 'wp-root-guard' );
-				break;
-			case 'tg_webhook_failed':
-				$notice_class = 'notice-error';
-				$notice_text  = esc_html__( 'Gagal mendaftarkan Webhook ke Telegram API. Pastikan Bot Token valid dan server mendukung koneksi HTTPS outbound.', 'wp-root-guard' );
 				break;
 			case 'email_test_success':
 				$notice_text = esc_html__( 'Email uji coba berhasil dikirim ke alamat email tujuan.', 'wp-root-guard' );
@@ -1717,14 +1694,11 @@ class Admin {
 										<button type="button" class="button button-secondary" onclick="triggerTestNotification('test_telegram')">
 											🚀 <?php esc_html_e( 'Kirim Uji Coba Telegram', 'wp-root-guard' ); ?>
 										</button>
-										<button type="button" class="button button-secondary" onclick="triggerTestNotification('sync_telegram_webhook')">
-											🔗 <?php esc_html_e( 'Sinkronkan Webhook Telegram', 'wp-root-guard' ); ?>
-										</button>
 										<p class="rg-field-desc" style="margin-top: 5px;">
 											<?php
 											printf(
 												/* translators: %s: link botfather */
-												wp_kses_post( __( 'Bot Token dapat diperoleh dengan membuat bot baru di Telegram via %s. Chat ID diperoleh dari ID obrolan grup/pribadi tempat Bot Anda bergabung. Tombol interaktif (Karantina, Whitelist, Hapus) menggunakan Webhook REST API yang dilindungi token rahasia 64-bit & HMAC-SHA256.', 'wp-root-guard' ) ),
+												wp_kses_post( __( 'Bot Token dapat diperoleh dengan membuat bot baru di Telegram via %s. Chat ID diperoleh dari ID obrolan grup/pribadi tempat Bot Anda bergabung.', 'wp-root-guard' ) ),
 												'<a href="https://t.me/BotFather" target="_blank">@BotFather</a>'
 											);
 											?>

@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.4.1
+Stable tag: 2.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,8 +22,7 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 * Uploads PHP Security Guard: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media wp-content/uploads/.
 * Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
 * Inspektur Kode Berkas (Secure Code Inspector): Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).
-* Tombol Aksi Interaktif Telegram: Eksekusi tindakan keamanan langsung dari obrolan Telegram (Karantina, Whitelist, Hapus) dengan 4 lapis keamanan kriptografi HMAC-SHA256 & Secret Token.
-* Notifikasi Instan Real-Time: Pengiriman notifikasi peringatan instan ke Telegram Bot API dan Email Administrator.
+* Notifikasi Telegram Read-Only murni 100%: Pengiriman notifikasi peringatan instan ke Telegram Bot API yang murni bersifat informasi saja tanpa membuka endpoint eksekusi eksternal.
 * Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ yang dikunci ketat dengan .htaccess.
 
 == Installation ==
@@ -41,6 +40,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.5.0 =
+* Penyederhanaan Notifikasi Telegram menjadi murni 100% Read-Only Notification tanpa membuka Webhook REST API eksekusi eksternal untuk menjamin keamanan maksimal.
 
 = 2.4.1 =
 * Perbaikan Fatal Error pada penanganan aksi Telegram Webhook akibat belum di-impornya namespace TelegramWebhook di admin/class-admin.php.

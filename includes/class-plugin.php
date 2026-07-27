@@ -49,20 +49,19 @@ class Plugin {
 	private $blocker;
 
 	/**
-	 * Instansi Telegram Webhook Handler.
+	 * Instansi GitHub Updater.
 	 *
-	 * @var TelegramWebhook
+	 * @var Updater
 	 */
-	private $telegram_webhook;
+	private $updater;
 
 	/**
 	 * Konstruktor. Menginisialisasi komponen utama.
 	 */
 	public function __construct() {
-		$this->cron             = new Cron();
-		$this->blocker          = new Blocker();
-		$this->updater          = new Updater( WP_ROOT_GUARD_FILE );
-		$this->telegram_webhook = new TelegramWebhook();
+		$this->cron    = new Cron();
+		$this->blocker = new Blocker();
+		$this->updater = new Updater( WP_ROOT_GUARD_FILE );
 
 		if ( is_admin() ) {
 			$this->admin     = new Admin\Admin();
@@ -82,9 +81,6 @@ class Plugin {
 
 		// Inisialisasi GitHub Updater.
 		$this->updater->init();
-
-		// Inisialisasi Telegram Webhook Endpoint.
-		$this->telegram_webhook->init();
 
 		// Inisialisasi Cron.
 		$this->cron->init();

@@ -1210,62 +1210,19 @@ class Scanner {
 
 			$tg_msg .= "🔗 [Buka Dashboard Root Guard](" . admin_url( 'index.php?page=wp-root-guard' ) . ")";
 
-			$reply_markup = null;
-			if ( 1 === count( $new_threats ) ) {
-				$first_threat = reset( $new_threats );
-				$reply_markup = self::generate_telegram_action_buttons( $first_threat['type'], $first_threat['name'] );
-			}
-
-			self::send_telegram_message( $settings['telegram_bot_token'], $settings['telegram_chat_id'], $tg_msg, $reply_markup );
+			self::send_telegram_message( $settings['telegram_bot_token'], $settings['telegram_chat_id'], $tg_msg );
 		}
-	}
-
-	/**
-	 * Membuat tombol interaktif (Inline Keyboard) Telegram bertanda tangan HMAC-SHA256 untuk ancaman.
-	 *
-	 * @param string $type Tipe ancaman ('folder', 'file', 'core_file').
-	 * @param string $name Nama ancaman.
-	 * @return array Structure array reply_markup Telegram.
-	 */
-	public static function generate_telegram_action_buttons( $type, $name ) {
-		$secret_key = TelegramWebhook::get_site_secret();
-		$timestamp  = time();
-
-		$build_cb = function( $action ) use ( $type, $name, $timestamp, $secret_key ) {
-			$sig = substr( hash_hmac( 'sha256', "{$action}|{$type}|{$name}|{$timestamp}", $secret_key ), 0, 16 );
-			return "{$action}:{$type}:{$name}:{$timestamp}:{$sig}";
-		};
-
-		return array(
-			'inline_keyboard' => array(
-				array(
-					array(
-						'text'          => '🔒 Karantina',
-						'callback_data' => $build_cb( 'quarantine' ),
-					),
-					array(
-						'text'          => '🛡️ Whitelist',
-						'callback_data' => $build_cb( 'trust' ),
-					),
-					array(
-						'text'          => '🗑️ Hapus',
-						'callback_data' => $build_cb( 'delete' ),
-					),
-				),
-			),
-		);
 	}
 
 	/**
 	 * Mengirim pesan HTTP POST ke API Telegram Bot.
 	 *
-	 * @param string     $token Bot token Telegram.
-	 * @param string     $chat_id Chat ID Telegram.
-	 * @param string     $message Pesan yang akan dikirim.
-	 * @param array|null $reply_markup Papan tombol interaktif opsional.
+	 * @param string $token Bot token Telegram.
+	 * @param string $chat_id Chat ID Telegram.
+	 * @param string $message Pesan yang akan dikirim.
 	 * @return bool True jika berhasil terkirim.
 	 */
-	public static function send_telegram_message( $token, $chat_id, $message, $reply_markup = null ) {
+	public static function send_telegram_message( $token, $chat_id, $message ) {
 		$token   = trim( $token );
 		$chat_id = trim( $chat_id );
 
@@ -1280,10 +1237,6 @@ class Scanner {
 			'parse_mode'               => 'Markdown',
 			'disable_web_page_preview' => true,
 		);
-
-		if ( ! empty( $reply_markup ) && is_array( $reply_markup ) ) {
-			$body['reply_markup'] = wp_json_encode( $reply_markup );
-		}
 
 		$args = array(
 			'body'        => $body,

@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.5.0 (27 Juli 2026)
+- **Refactoring Keamanan Utama**: **Pure 100% Read-Only Telegram Notification Architecture** — Menghapus seluruh fungsionalitas Webhook REST API eksekusi jarak jauh, sehingga notifikasi Telegram kembali murni 100% *Read-Only Notification* (hanya mengirim informasi peringatan tanpa membuka akses endpoint eksekusi eksternal), menjamin tingkat keamanan tertinggi bagi situs web Anda.
+
 ### v2.4.1 (27 Juli 2026)
 - **Bugfix**: Perbaikan *Fatal Error* saat pendaftaran/sinkronisasi Webhook Telegram akibat belum di-impornya namespace `use WPRootGuard\TelegramWebhook;` pada berkas `admin/class-admin.php`.
 
