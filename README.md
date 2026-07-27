@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.1.0 (27 Juli 2026)
+- **Status & Diagnostik Alasan Gagal Tombol Perbaiki**: Tombol "Perbaiki" (dan Aksi Massal) kini melaporkan status keberhasilan/kegagalan beserta **alasan spesifik kegagalannya** (seperti: izin akses folder/write permission ditolak server, koneksi HTTP/cURL timeout ke SVN WordPress.org, atau HTTP response status error).
+
 ### v3.0.2 (27 Juli 2026)
 - **Kompatibilitas NGINX / IIS**: Menambahkan pengecekan IP terblokir di tingkat PHP sebagai fallback untuk server web yang tidak memproses aturan `.htaccess`.
 - **Audit & Pemantapan Stabilitas**: Pembersihan total bug tipe data, perbaikan penanganan exception, dan penguatan keamanan menyeluruh.

@@ -260,12 +260,20 @@ class Admin {
 			case 'fix_core_file':
 				$file = isset( $_POST['folder'] ) ? sanitize_text_field( $_POST['folder'] ) : '';
 				if ( ! empty( $file ) ) {
-					$success = Scanner::restore_core_file( $file );
-					if ( $success ) {
+					$result = Scanner::restore_core_file( $file );
+					if ( is_array( $result ) && ! empty( $result['success'] ) ) {
 						Scanner::perform_scan();
-						wp_safe_redirect( add_query_arg( 'message', 'core_fixed', $redirect_url ) );
+						wp_safe_redirect( add_query_arg( array(
+							'message' => 'core_fixed',
+							'file'    => urlencode( $file ),
+						), $redirect_url ) );
 					} else {
-						wp_safe_redirect( add_query_arg( 'message', 'core_fix_failed', $redirect_url ) );
+						$reason = is_array( $result ) && ! empty( $result['message'] ) ? $result['message'] : esc_html__( 'Gagal memulihkan berkas core dari server WordPress.org.', 'wp-root-guard' );
+						set_transient( 'wprg_fix_error_' . get_current_user_id(), $reason, 60 );
+						wp_safe_redirect( add_query_arg( array(
+							'message' => 'core_fix_failed',
+							'file'    => urlencode( $file ),
+						), $redirect_url ) );
 					}
 					exit;
 				}
@@ -300,11 +308,19 @@ class Admin {
 				$items       = isset( $_POST['bulk_items'] ) && is_array( $_POST['bulk_items'] ) ? array_map( 'sanitize_text_field', $_POST['bulk_items'] ) : array();
 
 				if ( ! empty( $action_type ) && ! empty( $items ) ) {
-					$success_count = 0;
+					$success_count  = 0;
+					$failed_count   = 0;
+					$failed_reasons = array();
+
 					foreach ( $items as $item ) {
 						if ( 'bulk_fix_core' === $action_type ) {
-							if ( Scanner::restore_core_file( $item ) ) {
+							$res = Scanner::restore_core_file( $item );
+							if ( is_array( $res ) && ! empty( $res['success'] ) ) {
 								$success_count++;
+							} else {
+								$failed_count++;
+								$reason_text = is_array( $res ) && ! empty( $res['message'] ) ? $res['message'] : esc_html__( 'Gagal memulihkan.', 'wp-root-guard' );
+								$failed_reasons[] = $item . ': ' . $reason_text;
 							}
 						} elseif ( 'bulk_trust' === $action_type ) {
 							if ( Settings::add_to_whitelist( $item ) ) {
@@ -329,7 +345,14 @@ class Admin {
 					Scanner::perform_scan();
 
 					if ( 'bulk_fix_core' === $action_type ) {
-						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_fixed_core', 'count' => $success_count ), $redirect_url ) );
+						if ( $failed_count > 0 && ! empty( $failed_reasons ) ) {
+							set_transient( 'wprg_bulk_fix_errors_' . get_current_user_id(), implode( ' | ', $failed_reasons ), 60 );
+						}
+						wp_safe_redirect( add_query_arg( array(
+							'message' => 'bulk_fixed_core',
+							'success' => $success_count,
+							'failed'  => $failed_count,
+						), $redirect_url ) );
 					} elseif ( 'bulk_trust' === $action_type ) {
 						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_trusted', 'count' => $success_count ), $redirect_url ) );
 					} elseif ( 'bulk_quarantine' === $action_type ) {
@@ -614,8 +637,17 @@ class Admin {
 				$notice_text = esc_html__( 'Blokir alamat IP berhasil dibuka.', 'wp-root-guard' );
 				break;
 			case 'bulk_fixed_core':
-				$count       = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
-				$notice_text = sprintf( /* translators: %d: jumlah berkas */ esc_html__( '%d berkas core WordPress yang dipilih berhasil dipulihkan secara masal dari SVN resmi WordPress.org.', 'wp-root-guard' ), $count );
+				$succ_count   = isset( $_GET['success'] ) ? intval( $_GET['success'] ) : ( isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0 );
+				$fail_count   = isset( $_GET['failed'] ) ? intval( $_GET['failed'] ) : 0;
+				$bulk_errors  = get_transient( 'wprg_bulk_fix_errors_' . get_current_user_id() );
+				delete_transient( 'wprg_bulk_fix_errors_' . get_current_user_id() );
+
+				if ( $fail_count > 0 ) {
+					$notice_class = 'notice-warning';
+					$notice_text  = sprintf( esc_html__( '⚠️ HASIL PEMULIHAN MASSAL: %1$d berkas berhasil dipulihkan, %2$d berkas gagal dipulihkan. Rincian Alasan Gagal: %3$s', 'wp-root-guard' ), $succ_count, $fail_count, esc_html( $bulk_errors ) );
+				} else {
+					$notice_text  = sprintf( esc_html__( '✅ BERHASIL: %d berkas core WordPress yang dipilih telah dipulihkan secara masal dari SVN resmi WordPress.org.', 'wp-root-guard' ), $succ_count );
+				}
 				break;
 			case 'bulk_trusted':
 				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
@@ -634,11 +666,22 @@ class Admin {
 				$notice_text  = esc_html__( 'Gagal menghapus berkas. Pastikan perizinan berkas (file permissions) di server Anda benar.', 'wp-root-guard' );
 				break;
 			case 'core_fixed':
-				$notice_text = esc_html__( 'Berkas core WordPress berhasil diperbaiki ke keadaan asli.', 'wp-root-guard' );
+				$fixed_file  = isset( $_GET['file'] ) ? sanitize_text_field( urldecode( $_GET['file'] ) ) : '';
+				$notice_text = ! empty( $fixed_file )
+					? sprintf( esc_html__( '✅ BERHASIL MEMULIHKAN: Berkas core WordPress "%s" telah dipulihkan secara sempurna ke versi asli resmi dari SVN WordPress.org.', 'wp-root-guard' ), $fixed_file )
+					: esc_html__( '✅ BERHASIL: Berkas core WordPress berhasil diperbaiki ke keadaan asli.', 'wp-root-guard' );
 				break;
 			case 'core_fix_failed':
 				$notice_class = 'notice-error';
-				$notice_text  = esc_html__( 'Gagal memulihkan berkas core dari server WordPress.org.', 'wp-root-guard' );
+				$failed_file  = isset( $_GET['file'] ) ? sanitize_text_field( urldecode( $_GET['file'] ) ) : '';
+				$error_reason = get_transient( 'wprg_fix_error_' . get_current_user_id() );
+				delete_transient( 'wprg_fix_error_' . get_current_user_id() );
+				if ( ! $error_reason ) {
+					$error_reason = esc_html__( 'Gagal mengunduh atau menulis berkas dari server SVN WordPress.org (Periksa izin folder atau koneksi internet server).', 'wp-root-guard' );
+				}
+				$notice_text = ! empty( $failed_file )
+					? sprintf( esc_html__( '❌ GAGAL MEMULIHKAN BERKAS "%1$s": %2$s', 'wp-root-guard' ), $failed_file, esc_html( $error_reason ) )
+					: sprintf( esc_html__( '❌ GAGAL MEMULIHKAN BERKAS: %s', 'wp-root-guard' ), esc_html( $error_reason ) );
 				break;
 			case 'logs_cleared':
 				$notice_text = esc_html__( 'Riwayat log berhasil dibersihkan.', 'wp-root-guard' );

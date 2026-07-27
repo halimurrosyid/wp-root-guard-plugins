@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.0.2
+Stable tag: 3.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,10 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.1.0 =
+* Fitur Baru & Diagnostik: **Status & Alasan Kegagalan Pemulihan Berkas Core** — Tombol "Perbaiki" kini memberikan laporan notifikasi yang sangat eksplisit. Jika pemulihan berhasil, nama berkas dan versi SVN WordPress.org ditampilkan. Jika pemulihan gagal, sistem memberikan rincian alasan spesifik kegagalan (misal: koneksi HTTP/cURL timeout ke SVN WordPress.org, HTTP Error status code, atau izin akses tulis / File Write Permission server ditolak).
+* Pembaruan Massal: Aksi pemulihan massal (Bulk Fix Core) kini juga menampilkan daftar rincian berkas yang gagal beserta alasan kegagalannya secara transparan.
 
 = 3.0.2 =
 * Peningkatan Kompatibilitas NGINX/IIS: Menambahkan pencegatan IP terblokir di tingkat PHP pada `Blocker::intercept_malicious_requests()` sehingga pemblokiran IP tetap bekerja pada web server NGINX atau IIS yang tidak membaca `.htaccess`.

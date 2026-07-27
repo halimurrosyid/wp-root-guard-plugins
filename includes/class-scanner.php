@@ -489,6 +489,12 @@ class Scanner {
 	 * @param string $relative_path Path relatif berkas terhadap ABSPATH (contoh: wp-login.php).
 	 * @return bool True jika berhasil memulihkan berkas core.
 	 */
+	/**
+	 * Mengunduh berkas core asli dari repository resmi SVN WordPress.org dan menimpa berkas lokal yang rusak/dimodifikasi.
+	 *
+	 * @param string $relative_path Path relatif berkas core (misal: wp-blog-header.php atau wp-includes/version.php).
+	 * @return array Status keberhasilan (success => bool, message => string).
+	 */
 	public static function restore_core_file( $relative_path ) {
 		$relative_path = sanitize_text_field( $relative_path );
 		global $wp_version;
@@ -503,7 +509,10 @@ class Scanner {
 			}
 		}
 		if ( ! $is_allowed ) {
-			return false;
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Berkas tidak diizinkan untuk dipulihkan otomatis (Bukan berkas core WordPress resmi).', 'wp-root-guard' ),
+			);
 		}
 
 		// Validasi path final dengan realpath untuk cegah path traversal
@@ -513,11 +522,13 @@ class Scanner {
 		if ( ! is_dir( $dir ) ) {
 			wp_mkdir_p( $dir );
 		}
-		// Untuk berkas yang belum ada (missing), kita tetap izinkan berdasarkan allowed_prefixes
 		if ( file_exists( $local_path ) ) {
 			$real_local = realpath( $local_path );
 			if ( ! $real_local || ! $real_base || 0 !== strpos( $real_local, $real_base ) ) {
-				return false;
+				return array(
+					'success' => false,
+					'message' => esc_html__( 'Path berkas tidak valid atau terdeteksi potensi Path Traversal.', 'wp-root-guard' ),
+				);
 			}
 		}
 
@@ -525,17 +536,37 @@ class Scanner {
 		$response = wp_remote_get( $url, array( 'timeout' => 20 ) );
 
 		if ( is_wp_error( $response ) ) {
-			return false;
+			$err_msg = $response->get_error_message();
+			Logger::log(
+				esc_html__( 'Gagal mengunduh berkas core dari SVN', 'wp-root-guard' ),
+				$relative_path . ' (' . $err_msg . ')',
+				esc_html__( 'Failed', 'wp-root-guard' )
+			);
+			return array(
+				'success' => false,
+				'message' => sprintf( /* translators: %s: error message */ esc_html__( 'Gagal mengunduh dari SVN WordPress.org: %s. Periksa koneksi internet / outbound HTTP server Anda.', 'wp-root-guard' ), $err_msg ),
+			);
 		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( 200 !== $code ) {
-			return false;
+			Logger::log(
+				esc_html__( 'HTTP Error dari SVN WordPress.org', 'wp-root-guard' ),
+				$relative_path . ' (HTTP ' . $code . ')',
+				esc_html__( 'Failed', 'wp-root-guard' )
+			);
+			return array(
+				'success' => false,
+				'message' => sprintf( /* translators: %1$d: HTTP code, %2$s: WP version */ esc_html__( 'Server SVN WordPress.org mengembalikan HTTP %1$d (Berkas versi WordPress %2$s tidak ditemukan di repository resmi).', 'wp-root-guard' ), $code, $wp_version ),
+			);
 		}
 
 		$content = wp_remote_retrieve_body( $response );
 		if ( empty( $content ) ) {
-			return false;
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Konten berkas asli dari SVN WordPress.org diterima dalam keadaan kosong.', 'wp-root-guard' ),
+			);
 		}
 
 		// Timpa berkas lokal dengan berkas core resmi
@@ -545,10 +576,22 @@ class Scanner {
 				$relative_path,
 				esc_html__( 'Restored', 'wp-root-guard' )
 			);
-			return true;
-		}
 
-		return false;
+			return array(
+				'success' => true,
+				'message' => sprintf( /* translators: %1$s: path, %2$s: WP version */ esc_html__( 'Berkas %1$s BERHASIL dipulihkan ke versi asli resmi dari SVN WordPress.org (v%2$s)!', 'wp-root-guard' ), $relative_path, $wp_version ),
+			);
+		} else {
+			Logger::log(
+				esc_html__( 'Gagal menulis berkas core', 'wp-root-guard' ),
+				$relative_path . ' (Permission Denied)',
+				esc_html__( 'Failed', 'wp-root-guard' )
+			);
+			return array(
+				'success' => false,
+				'message' => sprintf( /* translators: %s: path */ esc_html__( 'Gagal menulis berkas %s. Izin akses tulis (File Permission / Write Access) ditolak oleh server.', 'wp-root-guard' ), $relative_path ),
+			);
+		}
 	}
 
 	/**
