@@ -49,6 +49,11 @@ class Blocker {
 	 * Mencegat permintaan HTTP berbahaya (misal mencoba menjalankan .php di folder uploads atau query string webshell).
 	 */
 	public function intercept_malicious_requests() {
+		// Administrator di dasbor WordPress tidak boleh di-intercept atau diblokir.
+		if ( is_admin() || current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		$settings = Settings::get_settings();
 		if ( empty( $settings['enable_ip_blocker'] ) ) {
 			return;

@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.0.0
+Stable tag: 3.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,12 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.0.1 =
+* Perbaikan Bug Kritis (Critical Error Fix): Menambahkan `break;` pada `case 'delete_permanently'` untuk mencegah *switch fall-through* ke `export_logs_csv` yang memicu fatal error `Cannot modify header information`.
+* Perbaikan Keamanan & Akses Admin: Menambahkan pengecualian untuk halaman Admin (`is_admin()` & `manage_options`) pada `Blocker::intercept_malicious_requests()` agar Administrator tidak pernah ter-intercept atau terblokir secara tidak sengaja.
+* Perbaikan Tipe Data (Type Safety): Menambahkan sanitasi string pada daftar notifikasi `$notified` sebelum `array_intersect()` untuk mencegah `TypeError: Array to string conversion`.
+* Perbaikan Log: Menambahkan validasi `is_array()` dan `isset()` pada pembacaan entri log aktivitas untuk mencegah warning/error pada log lama.
 
 = 3.0.0 =
 * Fitur Baru: **Export Log CSV** — tombol unduh log aktivitas langsung ke file `.csv` dengan encoding UTF-8 (kompatibel Excel) tersedia di header tabel log.

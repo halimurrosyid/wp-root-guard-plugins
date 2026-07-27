@@ -418,32 +418,42 @@ class Admin {
 						wp_safe_redirect( add_query_arg( 'message', 'delete_failed', $redirect_url ) );
 					}
 					exit;
-				case 'export_logs_csv':
-					$logs_export = Logger::get_logs();
-					if ( empty( $logs_export ) ) {
-						wp_safe_redirect( admin_url( 'index.php?page=wp-root-guard&tab=dashboard&message=no_logs' ) );
-						exit;
-					}
+				}
+				break;
 
-					$filename = 'wp-root-guard-log-' . gmdate( 'Y-m-d_H-i-s' ) . '.csv';
-					header( 'Content-Type: text/csv; charset=utf-8' );
-					header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-					header( 'Pragma: no-cache' );
-					header( 'Expires: 0' );
-
-					$output = fopen( 'php://output', 'w' );
-					fwrite( $output, "\xEF\xBB\xBF" ); // BOM UTF-8 agar Excel bisa baca karakter Indonesia
-					fputcsv( $output, array( 'Waktu (WIB)', 'Kejadian', 'Nama Folder/Berkas', 'Status' ) );
-					foreach ( $logs_export as $log ) {
-						fputcsv( $output, array(
-							esc_html( $log['time'] ),
-							esc_html( $log['event'] ),
-							esc_html( $log['folder_name'] ),
-							esc_html( $log['status'] ),
-						) );
-					}
-					fclose( $output );
+			case 'export_logs_csv':
+				$logs_export = Logger::get_logs();
+				if ( empty( $logs_export ) ) {
+					wp_safe_redirect( admin_url( 'index.php?page=wp-root-guard&tab=dashboard&message=no_logs' ) );
 					exit;
+				}
+
+				$filename = 'wp-root-guard-log-' . gmdate( 'Y-m-d_H-i-s' ) . '.csv';
+				header( 'Content-Type: text/csv; charset=utf-8' );
+				header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+				header( 'Pragma: no-cache' );
+				header( 'Expires: 0' );
+
+				$output = fopen( 'php://output', 'w' );
+				fwrite( $output, "\xEF\xBB\xBF" ); // BOM UTF-8 agar Excel bisa baca karakter Indonesia
+				fputcsv( $output, array( 'Waktu (WIB)', 'Kejadian', 'Nama Folder/Berkas', 'Status' ) );
+				foreach ( $logs_export as $log ) {
+					if ( ! is_array( $log ) ) {
+						continue;
+					}
+					$log_time   = isset( $log['time'] ) ? $log['time'] : '-';
+					$log_event  = isset( $log['event'] ) ? $log['event'] : '-';
+					$log_folder = isset( $log['folder_name'] ) ? $log['folder_name'] : '-';
+					$log_status = isset( $log['status'] ) ? $log['status'] : '-';
+					fputcsv( $output, array(
+						esc_html( $log_time ),
+						esc_html( $log_event ),
+						esc_html( $log_folder ),
+						esc_html( $log_status ),
+					) );
+				}
+				fclose( $output );
+				exit;
 
 				default:
 					break;
@@ -1398,46 +1408,58 @@ class Admin {
 										</tr>
 									</thead>
 									<tbody id="rg-log-body-visible">
-										<?php foreach ( $logs_visible as $log ) : ?>
+										<?php foreach ( $logs_visible as $log ) :
+											if ( ! is_array( $log ) ) { continue; }
+											$l_time   = isset( $log['time'] ) ? $log['time'] : '-';
+											$l_event  = isset( $log['event'] ) ? $log['event'] : '-';
+											$l_folder = isset( $log['folder_name'] ) ? $log['folder_name'] : '-';
+											$l_status = isset( $log['status'] ) ? $log['status'] : '-';
+											?>
 											<tr>
-												<td><?php echo esc_html( $log['time'] ); ?></td>
-												<td><?php echo esc_html( $log['event'] ); ?></td>
-												<td><code><?php echo esc_html( $log['folder_name'] ); ?></code></td>
+												<td><?php echo esc_html( $l_time ); ?></td>
+												<td><?php echo esc_html( $l_event ); ?></td>
+												<td><code><?php echo esc_html( $l_folder ); ?></code></td>
 												<td>
 													<?php
 													$badge_class = 'rg-badge';
-													if ( esc_html__( 'Safe', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Success', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Restored', 'wp-root-guard' ) === $log['status'] ) {
+													if ( esc_html__( 'Safe', 'wp-root-guard' ) === $l_status || esc_html__( 'Success', 'wp-root-guard' ) === $l_status || esc_html__( 'Restored', 'wp-root-guard' ) === $l_status ) {
 														$badge_class .= ' badge-safe';
-													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Unknown', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Quarantined', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Deleted', 'wp-root-guard' ) === $log['status'] ) {
+													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $l_status || esc_html__( 'Unknown', 'wp-root-guard' ) === $l_status || esc_html__( 'Quarantined', 'wp-root-guard' ) === $l_status || esc_html__( 'Deleted', 'wp-root-guard' ) === $l_status ) {
 														$badge_class .= ' badge-danger';
-													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $log['status'] ) {
+													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $l_status || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $l_status ) {
 														$badge_class .= ' badge-warning';
 													}
 													?>
-													<span class="<?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $log['status'] ); ?></span>
+													<span class="<?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $l_status ); ?></span>
 												</td>
 											</tr>
 										<?php endforeach; ?>
 									</tbody>
 									<?php if ( $has_more_logs ) : ?>
 									<tbody id="rg-log-body-hidden" style="display: none;">
-										<?php foreach ( $logs_hidden as $log ) : ?>
+										<?php foreach ( $logs_hidden as $log ) :
+											if ( ! is_array( $log ) ) { continue; }
+											$l_time   = isset( $log['time'] ) ? $log['time'] : '-';
+											$l_event  = isset( $log['event'] ) ? $log['event'] : '-';
+											$l_folder = isset( $log['folder_name'] ) ? $log['folder_name'] : '-';
+											$l_status = isset( $log['status'] ) ? $log['status'] : '-';
+											?>
 											<tr>
-												<td><?php echo esc_html( $log['time'] ); ?></td>
-												<td><?php echo esc_html( $log['event'] ); ?></td>
-												<td><code><?php echo esc_html( $log['folder_name'] ); ?></code></td>
+												<td><?php echo esc_html( $l_time ); ?></td>
+												<td><?php echo esc_html( $l_event ); ?></td>
+												<td><code><?php echo esc_html( $l_folder ); ?></code></td>
 												<td>
 													<?php
 													$badge_class2 = 'rg-badge';
-													if ( esc_html__( 'Safe', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Success', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Restored', 'wp-root-guard' ) === $log['status'] ) {
+													if ( esc_html__( 'Safe', 'wp-root-guard' ) === $l_status || esc_html__( 'Success', 'wp-root-guard' ) === $l_status || esc_html__( 'Restored', 'wp-root-guard' ) === $l_status ) {
 														$badge_class2 .= ' badge-safe';
-													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Unknown', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Quarantined', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Deleted', 'wp-root-guard' ) === $log['status'] ) {
+													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $l_status || esc_html__( 'Unknown', 'wp-root-guard' ) === $l_status || esc_html__( 'Quarantined', 'wp-root-guard' ) === $l_status || esc_html__( 'Deleted', 'wp-root-guard' ) === $l_status ) {
 														$badge_class2 .= ' badge-danger';
-													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $log['status'] ) {
+													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $l_status || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $l_status ) {
 														$badge_class2 .= ' badge-warning';
 													}
 													?>
-													<span class="<?php echo esc_attr( $badge_class2 ); ?>"><?php echo esc_html( $log['status'] ); ?></span>
+													<span class="<?php echo esc_attr( $badge_class2 ); ?>"><?php echo esc_html( $l_status ); ?></span>
 												</td>
 											</tr>
 										<?php endforeach; ?>

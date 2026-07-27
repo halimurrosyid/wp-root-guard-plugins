@@ -19,6 +19,12 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.0.1 (27 Juli 2026)
+- **Perbaikan Bug Kritis (Critical Error Fix)**: Memperbaiki *switch fall-through* di `handle_admin_actions` yang memicu fatal error `Cannot modify header information`.
+- **Perbaikan Akses Administrator**: `Blocker::intercept_malicious_requests()` kini mengeksklusi area admin (`is_admin()` & `manage_options`) agar Administrator tidak pernah terblokir.
+- **Type Safety**: Menambahkan sanitasi string pada daftar notifikasi `$notified` sebelum `array_intersect()` untuk mencegah `TypeError: Array to string conversion`.
+- **Log Safeguards**: Menambahkan penanganan `is_array()` dan `isset()` pada pembacaan entri log aktivitas.
+
 ### v3.0.0 (27 Juli 2026)
 - **Fitur Baru**: **Export Log CSV** — tombol unduh log aktivitas ke file `.csv` dengan encoding UTF-8 (kompatibel Excel) kini tersedia di header tabel log.
 - **Fitur Baru**: **Paginasi Log** — log ditampilkan 20 entri terbaru terlebih dahulu. Entri lama dapat dibuka dengan tombol "Tampilkan Log Lainnya" tanpa reload halaman.

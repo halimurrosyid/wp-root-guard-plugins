@@ -1216,12 +1216,22 @@ class Scanner {
 		// Bangun daftar key ancaman yang aktif saat ini
 		$active_keys = array();
 		foreach ( $threats as $threat ) {
-			$active_keys[] = $threat['type'] . ':' . $threat['name'];
+			if ( is_array( $threat ) && isset( $threat['type'], $threat['name'] ) ) {
+				$active_keys[] = $threat['type'] . ':' . $threat['name'];
+			}
+		}
+
+		// Clean $notified agar hanya berisi string saja (cegah TypeError array to string conversion)
+		$clean_notified = array();
+		foreach ( $notified as $item ) {
+			if ( is_string( $item ) ) {
+				$clean_notified[] = $item;
+			}
 		}
 
 		// Bersihkan key notifikasi lama yang ancamannya sudah tidak aktif
 		// agar ancaman baru yang muncul menggantikan ancaman lama tetap dinotifikasi
-		$notified = array_intersect( $notified, $active_keys );
+		$notified = array_intersect( $clean_notified, $active_keys );
 
 		foreach ( $threats as $threat ) {
 			$threat_key = $threat['type'] . ':' . $threat['name'];
