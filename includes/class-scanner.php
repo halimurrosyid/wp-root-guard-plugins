@@ -587,14 +587,20 @@ class Scanner {
 		$original_lines = explode( "\n", str_replace( "\r", "", $original_content ) );
 		$local_lines    = explode( "\n", str_replace( "\r", "", $local_content ) );
 
-		$diff = array();
-		$max  = max( count( $original_lines ), count( $local_lines ) );
+		$diff     = array();
+		$max      = max( count( $original_lines ), count( $local_lines ) );
+		$max_diff = 300; // Batasi maksimal 300 baris perbedaan agar tidak lambat di berkas besar
+		$truncated = false;
 		
 		for ( $i = 0; $i < $max; $i++ ) {
-			$orig_line = isset( $original_lines[$i] ) ? $original_lines[$i] : null;
-			$loc_line  = isset( $local_lines[$i] ) ? $local_lines[$i] : null;
+			$orig_line = isset( $original_lines[ $i ] ) ? $original_lines[ $i ] : null;
+			$loc_line  = isset( $local_lines[ $i ] ) ? $local_lines[ $i ] : null;
 
 			if ( $orig_line !== $loc_line ) {
+				if ( count( $diff ) >= $max_diff ) {
+					$truncated = true;
+					break;
+				}
 				$line_number = $i + 1;
 				$diff[] = array(
 					'line'     => $line_number,
@@ -602,6 +608,14 @@ class Scanner {
 					'local'    => $loc_line,
 				);
 			}
+		}
+
+		if ( $truncated ) {
+			$diff[] = array(
+				'line'     => '...',
+				'original' => sprintf( /* translators: %d: max diff lines */ esc_html__( '[Tampilan dibatasi %d baris perbedaan. Unduh berkas asli untuk melihat selengkapnya.]', 'wp-root-guard' ), $max_diff ),
+				'local'    => null,
+			);
 		}
 
 		return $diff;
@@ -1199,6 +1213,16 @@ class Scanner {
 		}
 
 		$new_threats = array();
+		// Bangun daftar key ancaman yang aktif saat ini
+		$active_keys = array();
+		foreach ( $threats as $threat ) {
+			$active_keys[] = $threat['type'] . ':' . $threat['name'];
+		}
+
+		// Bersihkan key notifikasi lama yang ancamannya sudah tidak aktif
+		// agar ancaman baru yang muncul menggantikan ancaman lama tetap dinotifikasi
+		$notified = array_intersect( $notified, $active_keys );
+
 		foreach ( $threats as $threat ) {
 			$threat_key = $threat['type'] . ':' . $threat['name'];
 			if ( ! in_array( $threat_key, $notified, true ) ) {
@@ -1373,15 +1397,24 @@ class Scanner {
 		$php_files      = array();
 		$user_whitelist = Settings::get_user_whitelist();
 
+		// Path folder karantina — dieksklusi dari pemindaian agar tidak false positive
+		$quarantine_path = str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard-quarantine' );
+
 		try {
 			$directory = new \RecursiveDirectoryIterator( $base_dir, \RecursiveDirectoryIterator::SKIP_DOTS );
 			$iterator  = new \RecursiveIteratorIterator( $directory, \RecursiveIteratorIterator::SELF_FIRST );
 
 			foreach ( $iterator as $item ) {
 				if ( $item->isFile() ) {
+					$abs_path = str_replace( '\\', '/', $item->getPathname() );
+
+					// Lewati semua berkas di dalam folder karantina
+					if ( 0 === strpos( $abs_path, $quarantine_path ) ) {
+						continue;
+					}
+
 					$ext = strtolower( pathinfo( $item->getFilename(), PATHINFO_EXTENSION ) );
 					if ( in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ) {
-						$abs_path = str_replace( '\\', '/', $item->getPathname() );
 						$rel_path = str_replace( str_replace( '\\', '/', ABSPATH ), '', $abs_path );
 
 						if ( in_array( $rel_path, $user_whitelist, true ) || in_array( $abs_path, $user_whitelist, true ) ) {

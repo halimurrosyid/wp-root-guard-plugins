@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.9.0
+Stable tag: 3.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,15 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.0.0 =
+* Fitur Baru: **Export Log CSV** — tombol unduh log aktivitas langsung ke file `.csv` dengan encoding UTF-8 (kompatibel Excel) tersedia di header tabel log.
+* Fitur Baru: **Paginasi Log** — log ditampilkan 20 entri terbaru terlebih dahulu. Entri lama dapat dibuka dengan tombol "Tampilkan Log Lainnya" untuk menghemat performa halaman.
+* Fitur Baru: **Badge Jumlah Entri Log** — jumlah total log ditampilkan sebagai badge di header tabel.
+* Keamanan: **Rate Limiting AJAX Scan** — pemindaian via AJAX dibatasi maksimal 1x per 20 detik per pengguna menggunakan WordPress Transients API untuk mencegah penyalahgunaan.
+* Perbaikan Bug Kritis: `scan_uploads_for_php_files()` kini mengeksklusi folder karantina (`wp-root-guard-quarantine/`) sehingga berkas yang sudah dikarantina tidak terus muncul sebagai ancaman baru.
+* Perbaikan Bug: Notifikasi email/Telegram kini berjalan dengan benar per-ancaman — ancaman baru yang menggantikan ancaman lama yang sudah ditangani akan selalu dinotifikasi.
+* Perbaikan: `get_file_diff()` kini dibatasi maksimal 300 baris perbedaan untuk mencegah timeout pada berkas core yang sangat besar.
 
 = 2.9.0 =
 * Keamanan: Penguatan proteksi Path Traversal di 4 fungsi kritis (inspect, restore, diff, delete) menggunakan `realpath()` untuk mencegah path traversal via URL-encoded dan double-slash.

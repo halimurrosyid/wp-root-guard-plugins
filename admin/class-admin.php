@@ -418,9 +418,36 @@ class Admin {
 						wp_safe_redirect( add_query_arg( 'message', 'delete_failed', $redirect_url ) );
 					}
 					exit;
-				}
-				break;
-		}
+				case 'export_logs_csv':
+					$logs_export = Logger::get_logs();
+					if ( empty( $logs_export ) ) {
+						wp_safe_redirect( admin_url( 'index.php?page=wp-root-guard&tab=dashboard&message=no_logs' ) );
+						exit;
+					}
+
+					$filename = 'wp-root-guard-log-' . gmdate( 'Y-m-d_H-i-s' ) . '.csv';
+					header( 'Content-Type: text/csv; charset=utf-8' );
+					header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+					header( 'Pragma: no-cache' );
+					header( 'Expires: 0' );
+
+					$output = fopen( 'php://output', 'w' );
+					fwrite( $output, "\xEF\xBB\xBF" ); // BOM UTF-8 agar Excel bisa baca karakter Indonesia
+					fputcsv( $output, array( 'Waktu (WIB)', 'Kejadian', 'Nama Folder/Berkas', 'Status' ) );
+					foreach ( $logs_export as $log ) {
+						fputcsv( $output, array(
+							esc_html( $log['time'] ),
+							esc_html( $log['event'] ),
+							esc_html( $log['folder_name'] ),
+							esc_html( $log['status'] ),
+						) );
+					}
+					fclose( $output );
+					exit;
+
+				default:
+					break;
+			}
 	}
 
 	/**
@@ -479,6 +506,14 @@ class Admin {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
 		}
+
+		// Rate Limiting: batasi pemindaian maksimal 1x setiap 20 detik per pengguna
+		$rate_key = 'wprg_scan_rate_' . get_current_user_id();
+		if ( get_transient( $rate_key ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Terlalu cepat. Harap tunggu 20 detik sebelum memindai ulang.', 'wp-root-guard' ) ) );
+			return;
+		}
+		set_transient( $rate_key, 1, 20 );
 
 		Scanner::perform_scan();
 
@@ -1323,10 +1358,21 @@ class Admin {
 				<!-- RIWAYAT LOG -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-						<h2 style="margin: 0;">📜 <?php esc_html_e( 'Log Aktivitas Keamanan', 'wp-root-guard' ); ?></h2>
-						<button type="button" class="button button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus seluruh riwayat log?', 'wp-root-guard' ) ); ?>')) { submitRgAction('clear_logs'); }">
-							🧹 <?php esc_html_e( 'Bersihkan Log', 'wp-root-guard' ); ?>
-						</button>
+						<h2 style="margin: 0;">📜 <?php esc_html_e( 'Log Aktivitas Keamanan', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $logs ) ) : ?>
+								<span class="rg-badge" style="background:#475569; color:#fff; font-size:12px; margin-left:6px;"><?php echo count( $logs ); ?> Entri</span>
+							<?php endif; ?>
+						</h2>
+						<div style="display: flex; gap: 8px; align-items: center;">
+							<?php if ( ! empty( $logs ) ) : ?>
+								<button type="button" class="button button-secondary button-small" onclick="submitRgAction('export_logs_csv')" title="<?php esc_attr_e( 'Unduh seluruh log sebagai file CSV', 'wp-root-guard' ); ?>">
+									📥 <?php esc_html_e( 'Export CSV', 'wp-root-guard' ); ?>
+								</button>
+							<?php endif; ?>
+							<button type="button" class="button button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus seluruh riwayat log?', 'wp-root-guard' ) ); ?>')) { submitRgAction('clear_logs'); }">
+								🧹 <?php esc_html_e( 'Bersihkan Log', 'wp-root-guard' ); ?>
+							</button>
+						</div>
 					</div>
 					<div class="rg-card-body">
 						<?php if ( empty( $logs ) ) : ?>
@@ -1334,7 +1380,14 @@ class Admin {
 								<p><?php esc_html_e( 'Belum ada catatan log aktivitas.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
-							<div style="max-height: 250px; overflow-y: auto;">
+							<?php
+							// Paginasi: tampilkan 20 log terbaru dulu, sisanya bisa dibuka
+							$log_page_size  = 20;
+							$logs_visible   = array_slice( $logs, 0, $log_page_size );
+							$logs_hidden    = array_slice( $logs, $log_page_size );
+							$has_more_logs  = ! empty( $logs_hidden );
+							?>
+							<div style="max-height: 340px; overflow-y: auto;" id="rg-log-container">
 								<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 									<thead>
 										<tr>
@@ -1344,10 +1397,10 @@ class Admin {
 											<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
 										</tr>
 									</thead>
-									<tbody>
-										<?php foreach ( $logs as $log ) : ?>
+									<tbody id="rg-log-body-visible">
+										<?php foreach ( $logs_visible as $log ) : ?>
 											<tr>
-												<td><?php echo esc_html( Scanner::get_wib_time( $log['time'] ) ); ?></td>
+												<td><?php echo esc_html( $log['time'] ); ?></td>
 												<td><?php echo esc_html( $log['event'] ); ?></td>
 												<td><code><?php echo esc_html( $log['folder_name'] ); ?></code></td>
 												<td>
@@ -1366,8 +1419,54 @@ class Admin {
 											</tr>
 										<?php endforeach; ?>
 									</tbody>
+									<?php if ( $has_more_logs ) : ?>
+									<tbody id="rg-log-body-hidden" style="display: none;">
+										<?php foreach ( $logs_hidden as $log ) : ?>
+											<tr>
+												<td><?php echo esc_html( $log['time'] ); ?></td>
+												<td><?php echo esc_html( $log['event'] ); ?></td>
+												<td><code><?php echo esc_html( $log['folder_name'] ); ?></code></td>
+												<td>
+													<?php
+													$badge_class2 = 'rg-badge';
+													if ( esc_html__( 'Safe', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Success', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Restored', 'wp-root-guard' ) === $log['status'] ) {
+														$badge_class2 .= ' badge-safe';
+													} elseif ( esc_html__( 'Threat Detected', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Unknown', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Quarantined', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Deleted', 'wp-root-guard' ) === $log['status'] ) {
+														$badge_class2 .= ' badge-danger';
+													} elseif ( esc_html__( 'Modified', 'wp-root-guard' ) === $log['status'] || esc_html__( 'Malware Suspicious', 'wp-root-guard' ) === $log['status'] ) {
+														$badge_class2 .= ' badge-warning';
+													}
+													?>
+													<span class="<?php echo esc_attr( $badge_class2 ); ?>"><?php echo esc_html( $log['status'] ); ?></span>
+												</td>
+											</tr>
+										<?php endforeach; ?>
+									</tbody>
+									<?php endif; ?>
 								</table>
 							</div>
+							<?php if ( $has_more_logs ) : ?>
+								<div style="text-align: center; margin-top: 10px;">
+									<button type="button" id="rg-show-all-logs" class="button button-secondary" onclick="toggleAllLogs(this)">
+										🔽 <?php echo esc_html( sprintf( /* translators: %d: jumlah log tersembunyi */ __( 'Tampilkan %d Log Lainnya', 'wp-root-guard' ), count( $logs_hidden ) ) ); ?>
+									</button>
+								</div>
+								<script type="text/javascript">
+									function toggleAllLogs(btn) {
+										var hidden = document.getElementById('rg-log-body-hidden');
+										var container = document.getElementById('rg-log-container');
+										if (hidden.style.display === 'none') {
+											hidden.style.display = '';
+											container.style.maxHeight = '600px';
+											btn.innerHTML = '🔼 <?php echo esc_js( __( 'Sembunyikan Log Lama', 'wp-root-guard' ) ); ?>';
+										} else {
+											hidden.style.display = 'none';
+											container.style.maxHeight = '340px';
+											btn.innerHTML = '🔽 <?php echo esc_js( sprintf( __( 'Tampilkan %d Log Lainnya', "wp-root-guard" ), count( $logs_hidden ) ) ); ?>';
+										}
+									}
+								</script>
+							<?php endif; ?>
 						<?php endif; ?>
 					</div>
 				</div>

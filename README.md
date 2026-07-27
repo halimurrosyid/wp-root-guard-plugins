@@ -19,6 +19,15 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.0.0 (27 Juli 2026)
+- **Fitur Baru**: **Export Log CSV** — tombol unduh log aktivitas ke file `.csv` dengan encoding UTF-8 (kompatibel Excel) kini tersedia di header tabel log.
+- **Fitur Baru**: **Paginasi Log** — log ditampilkan 20 entri terbaru terlebih dahulu. Entri lama dapat dibuka dengan tombol "Tampilkan Log Lainnya" tanpa reload halaman.
+- **Fitur Baru**: **Badge Jumlah Entri Log** — jumlah total entri log ditampilkan sebagai badge informatif di header tabel.
+- **Keamanan**: **Rate Limiting AJAX Scan** — pemindaian via AJAX kini dibatasi 1x per 20 detik per pengguna menggunakan WordPress Transients API untuk mencegah flood/penyalahgunaan.
+- **Perbaikan Bug Kritis**: `scan_uploads_for_php_files()` kini **mengeksklusi folder karantina** (`wp-root-guard-quarantine/`) — berkas yang sudah dikarantina tidak lagi muncul berulang sebagai ancaman baru.
+- **Perbaikan Bug**: Notifikasi email/Telegram kini **benar-benar per-ancaman** — ancaman baru yang menggantikan ancaman lama yang sudah ditangani akan selalu mengirim notifikasi baru.
+- **Perbaikan**: `get_file_diff()` dibatasi maksimal 300 baris perbedaan untuk mencegah timeout/lambat pada berkas core berukuran besar.
+
 ### v2.9.0 (27 Juli 2026)
 - **Keamanan**: Penguatan proteksi **Path Traversal** di 4 fungsi kritis (`inspect_file_content`, `restore_core_file`, `get_file_diff`, `delete_file_directly`) menggunakan `realpath()` — mencegah serangan via path URL-encoded atau double-slash.
 - **Keamanan**: Tambahan validasi allowlist prefix path pada `restore_core_file()` — hanya berkas core WordPress resmi (`wp-admin/`, `wp-includes/`, dll) yang dapat dipulihkan.
