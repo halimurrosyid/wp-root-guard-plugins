@@ -79,6 +79,16 @@ class Blocker {
 			}
 		}
 
+		// 3. Cek jika IP pengakses ada di daftar IP terblokir (fallback untuk NGINX / IIS)
+		if ( ! $is_malicious ) {
+			$ip          = self::get_client_ip();
+			$blocked_ips = self::get_blocked_ips();
+			if ( isset( $blocked_ips[ $ip ] ) ) {
+				$is_malicious = true;
+				$reason       = isset( $blocked_ips[ $ip ]['reason'] ) ? $blocked_ips[ $ip ]['reason'] : esc_html__( 'IP Terblokir oleh Sistem Security', 'wp-root-guard' );
+			}
+		}
+
 		if ( $is_malicious ) {
 			$ip = self::get_client_ip();
 			self::block_ip( $ip, $reason );

@@ -19,6 +19,10 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.0.2 (27 Juli 2026)
+- **Kompatibilitas NGINX / IIS**: Menambahkan pengecekan IP terblokir di tingkat PHP sebagai fallback untuk server web yang tidak memproses aturan `.htaccess`.
+- **Audit & Pemantapan Stabilitas**: Pembersihan total bug tipe data, perbaikan penanganan exception, dan penguatan keamanan menyeluruh.
+
 ### v3.0.1 (27 Juli 2026)
 - **Perbaikan Bug Kritis (Critical Error Fix)**: Memperbaiki *switch fall-through* di `handle_admin_actions` yang memicu fatal error `Cannot modify header information`.
 - **Perbaikan Akses Administrator**: `Blocker::intercept_malicious_requests()` kini mengeksklusi area admin (`is_admin()` & `manage_options`) agar Administrator tidak pernah terblokir.

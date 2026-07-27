@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.0.1
+Stable tag: 3.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,10 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.0.2 =
+* Peningkatan Kompatibilitas NGINX/IIS: Menambahkan pencegatan IP terblokir di tingkat PHP pada `Blocker::intercept_malicious_requests()` sehingga pemblokiran IP tetap bekerja pada web server NGINX atau IIS yang tidak membaca `.htaccess`.
+* Audit & Pemantapan Kode: Memastikan seluruh penanganan exception, validasi input, sanitasi, dan fungsi pemindaian bebas dari potensi race condition dan masalah tipe data.
 
 = 3.0.1 =
 * Perbaikan Bug Kritis (Critical Error Fix): Menambahkan `break;` pada `case 'delete_permanently'` untuk mencegah *switch fall-through* ke `export_logs_csv` yang memicu fatal error `Cannot modify header information`.
