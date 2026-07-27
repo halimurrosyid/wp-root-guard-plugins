@@ -345,9 +345,10 @@ class Admin {
 				$settings_data = array(
 					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'every_5_minutes',
 					'enable_uploads_php_scan'      => isset( $_POST['enable_uploads_php_scan'] ),
+					'enable_ip_blocker'            => isset( $_POST['enable_ip_blocker'] ),
 					'enable_auto_quarantine'       => isset( $_POST['enable_auto_quarantine'] ),
 					'enable_email_notifications'    => isset( $_POST['enable_email_notifications'] ),
-					'admin_email'                  => isset( $_POST['admin_email'] ) ? sanitize_text_field( $_POST['admin_email'] ) : '',
+					'admin_email'                  => isset( $_POST['admin_email'] ) ? sanitize_email( $_POST['admin_email'] ) : '',
 					'enable_telegram_notifications' => isset( $_POST['enable_telegram_notifications'] ),
 					'telegram_bot_token'           => isset( $_POST['telegram_bot_token'] ) ? sanitize_text_field( $_POST['telegram_bot_token'] ) : '',
 					'telegram_chat_id'             => isset( $_POST['telegram_chat_id'] ) ? sanitize_text_field( $_POST['telegram_chat_id'] ) : '',
@@ -601,7 +602,7 @@ class Admin {
 				$notice_text = esc_html__( 'Pengaturan berhasil disimpan.', 'wp-root-guard' );
 				break;
 			case 'tg_test_success':
-				$notice_text = esc_html__( 'Koneksi bot Telegram berhasil! Pesan uji coba lengkap dengan Tombol Interaktif telah dikirim ke Telegram.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Koneksi bot Telegram berhasil! Pesan uji coba notifikasi keamanan telah dikirim ke Telegram Anda.', 'wp-root-guard' );
 				break;
 			case 'tg_test_failed':
 				$notice_class = 'notice-error';
@@ -873,6 +874,7 @@ class Admin {
 				<?php endif; ?>
 
 				<!-- TABEL 1: HASIL PEMINDAIAN FOLDER ASING -->
+				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
 						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
 							📂 <?php esc_html_e( 'Hasil Scan: Folder Asing Aktif', 'wp-root-guard' ); ?>
@@ -886,7 +888,7 @@ class Admin {
 					<div class="rg-card-body">
 						<?php if ( empty( $active_folders ) ) : ?>
 							<div class="rg-empty-message">
-								<p>✅ <?php esc_html_e( 'No suspicious folders found.', 'wp-root-guard' ); ?></p>
+								<p>✅ <?php esc_html_e( 'Tidak ada folder asing yang terdeteksi di root.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
@@ -914,6 +916,9 @@ class Admin {
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $folder['name'] ); ?>')">
 													👍 <?php esc_html_e( 'Trust Folder', 'wp-root-guard' ); ?>
 												</button>
+												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina folder asing ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $folder['name'] ); ?>'); }">
+													🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
+												</button>
 											</td>
 										</tr>
 									<?php endforeach; ?>
@@ -924,6 +929,7 @@ class Admin {
 				</div>
 
 				<!-- TABEL 2: INTEGRITAS BERKAS CORE WORDPRESS (wp-admin, wp-includes, root core) -->
+				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
 						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
 							🛡️ <?php esc_html_e( 'Hasil Scan: Integritas Berkas Core (wp-admin, wp-includes, root)', 'wp-root-guard' ); ?>
@@ -1016,6 +1022,7 @@ class Admin {
 				</div>
 
 				<!-- TABEL 3: HASIL PEMINDAIAN BERKAS ASING DI ROOT -->
+				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">
 						<h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
 							📄 <?php esc_html_e( 'Hasil Scan: Berkas Asing Aktif di Root', 'wp-root-guard' ); ?>
@@ -1029,7 +1036,7 @@ class Admin {
 					<div class="rg-card-body">
 						<?php if ( empty( $active_files ) ) : ?>
 							<div class="rg-empty-message">
-								<p>✅ <?php esc_html_e( 'No suspicious or modified files found in root.', 'wp-root-guard' ); ?></p>
+								<p>✅ <?php esc_html_e( 'Tidak ada berkas asing atau dimodifikasi yang terdeteksi di root.', 'wp-root-guard' ); ?></p>
 							</div>
 						<?php else : ?>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
@@ -1198,7 +1205,7 @@ class Admin {
 											<td><code><?php echo esc_html( $type_label ); ?></code></td>
 											<td><strong><?php echo esc_html( $item['original_name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $item['quarantine_name'] ); ?></code></td>
-											<td><?php echo esc_html( Scanner::get_wib_time( $item['quarantine_time'] ) ); ?></td>
+											<td><?php echo esc_html( isset( $item['quarantine_time'] ) ? $item['quarantine_time'] : '-' ); ?></td>
 											<td><span class="rg-badge badge-safe">🔒 <?php echo esc_html( $status_label ); ?></span></td>
 											<td>
 												<?php if ( isset( $item['type'] ) && 'file' === $item['type'] ) : ?>

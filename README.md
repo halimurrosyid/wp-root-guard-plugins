@@ -19,6 +19,16 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.9.0 (27 Juli 2026)
+- **Keamanan**: Penguatan proteksi **Path Traversal** di 4 fungsi kritis (`inspect_file_content`, `restore_core_file`, `get_file_diff`, `delete_file_directly`) menggunakan `realpath()` — mencegah serangan via path URL-encoded atau double-slash.
+- **Keamanan**: Tambahan validasi allowlist prefix path pada `restore_core_file()` — hanya berkas core WordPress resmi (`wp-admin/`, `wp-includes/`, dll) yang dapat dipulihkan.
+- **Bug Fix**: `enable_ip_blocker` kini benar-benar tersimpan saat klik Simpan Pengaturan (sebelumnya toggle tidak berfungsi karena field tidak dikirim ke backend).
+- **Bug Fix**: Tabel **Folder Asing** kini punya tombol **Karantina** yang sebelumnya hilang, konsisten dengan tabel ancaman lainnya.
+- **Bug Fix**: HTML wrapper `<div class="rg-card">` yang hilang di Tabel 1 dan Tabel 2 telah diperbaiki — styling card kini konsisten.
+- **Bug Fix**: Teks *empty state* Tabel 1 dan 3 yang masih bahasa Inggris telah diterjemahkan ke Bahasa Indonesia.
+- **Perbaikan**: Pesan sukses uji coba Telegram diperbarui — tidak lagi salah menyebut "Tombol Interaktif".
+- **Perbaikan**: `uninstall.php` kini membersihkan **semua opsi database** dan blok IP di `.htaccess` secara otomatis saat plugin dihapus permanen.
+
 ### v2.8.0 (27 Juli 2026)
 - **Redesain Tampilan & UI/UX Mayor**: **Sticky Floating Bulk Action Bar & Intuitive Threat Badging** — Bar Aksi Massal kini melayang secara dinamis (*Sticky*) saat pengguna menggeser (*scroll*) halaman, dilengkapi *Badge Ringkasan Jumlah Ancaman* pada setiap header tabel, dan penyempurnaan tombol aksi agar jauh lebih intuitif dan mudah digunakan.
 

@@ -493,7 +493,35 @@ class Scanner {
 		$relative_path = sanitize_text_field( $relative_path );
 		global $wp_version;
 
-		$url = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
+		// Keamanan: hanya izinkan path yang berada di dalam folder core WordPress resmi
+		$allowed_prefixes = array( 'wp-admin/', 'wp-includes/', 'wp-login.php', 'wp-blog-header.php', 'wp-settings.php', 'wp-load.php', 'wp-cron.php', 'wp-mail.php', 'wp-comments-post.php', 'wp-activate.php', 'wp-signup.php', 'wp-trackback.php', 'wp-links-opml.php', 'index.php', 'xmlrpc.php' );
+		$is_allowed = false;
+		foreach ( $allowed_prefixes as $prefix ) {
+			if ( 0 === strpos( $relative_path, $prefix ) ) {
+				$is_allowed = true;
+				break;
+			}
+		}
+		if ( ! $is_allowed ) {
+			return false;
+		}
+
+		// Validasi path final dengan realpath untuk cegah path traversal
+		$local_path = ABSPATH . $relative_path;
+		$real_base  = realpath( ABSPATH );
+		$dir        = dirname( $local_path );
+		if ( ! is_dir( $dir ) ) {
+			wp_mkdir_p( $dir );
+		}
+		// Untuk berkas yang belum ada (missing), kita tetap izinkan berdasarkan allowed_prefixes
+		if ( file_exists( $local_path ) ) {
+			$real_local = realpath( $local_path );
+			if ( ! $real_local || ! $real_base || 0 !== strpos( $real_local, $real_base ) ) {
+				return false;
+			}
+		}
+
+		$url      = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
 		$response = wp_remote_get( $url, array( 'timeout' => 20 ) );
 
 		if ( is_wp_error( $response ) ) {
@@ -508,14 +536,6 @@ class Scanner {
 		$content = wp_remote_retrieve_body( $response );
 		if ( empty( $content ) ) {
 			return false;
-		}
-
-		$local_path = ABSPATH . $relative_path;
-		
-		// Pastikan folder penampung sudah ada
-		$dir = dirname( $local_path );
-		if ( ! is_dir( $dir ) ) {
-			wp_mkdir_p( $dir );
 		}
 
 		// Timpa berkas lokal dengan berkas core resmi
@@ -540,6 +560,14 @@ class Scanner {
 	public static function get_file_diff( $relative_path ) {
 		$relative_path = sanitize_text_field( $relative_path );
 		$local_path    = ABSPATH . $relative_path;
+
+		// Validasi realpath untuk cegah path traversal
+		$real_base  = realpath( ABSPATH );
+		$real_local = realpath( $local_path );
+		if ( ! $real_base || ! $real_local || 0 !== strpos( $real_local, $real_base ) ) {
+			return array( 'error' => esc_html__( 'Berkas lokal tidak ditemukan.', 'wp-root-guard' ) );
+		}
+		$local_path = $real_local;
 
 		if ( ! file_exists( $local_path ) ) {
 			return array( 'error' => esc_html__( 'Berkas lokal tidak ditemukan.', 'wp-root-guard' ) );
@@ -653,14 +681,19 @@ class Scanner {
 	 */
 	public static function inspect_file_content( $rel_path ) {
 		$rel_path = sanitize_text_field( $rel_path );
-		$abs_path = str_replace( '\\', '/', ABSPATH . $rel_path );
 
-		if ( false !== strpos( $rel_path, '..' ) || ! file_exists( $abs_path ) || is_dir( $abs_path ) ) {
+		// Validasi path menggunakan realpath() untuk mencegah path traversal termasuk encoded atau double-slash
+		$abs_path  = ABSPATH . $rel_path;
+		$real_base = realpath( ABSPATH );
+		$real_path = realpath( $abs_path );
+
+		if ( ! $real_base || ! $real_path || 0 !== strpos( $real_path, $real_base ) || is_dir( $real_path ) ) {
 			return array(
 				'success' => false,
 				'message' => esc_html__( 'Berkas tidak ditemukan atau path tidak valid.', 'wp-root-guard' ),
 			);
 		}
+		$abs_path = $real_path;
 
 		if ( filesize( $abs_path ) > 2 * 1024 * 1024 ) {
 			return array(
@@ -940,10 +973,13 @@ class Scanner {
 		$rel_path  = sanitize_text_field( $rel_path );
 		$file_path = ABSPATH . $rel_path;
 
-		// Hindari penyeberangan direktori atau berkas tidak ada.
-		if ( false !== strpos( $rel_path, '..' ) || ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+		// Validasi realpath untuk cegah path traversal (termasuk encoded dan double-slash)
+		$real_base = realpath( ABSPATH );
+		$real_file = realpath( $file_path );
+		if ( ! $real_base || ! $real_file || 0 !== strpos( $real_file, $real_base ) || is_dir( $real_file ) ) {
 			return false;
 		}
+		$file_path = $real_file;
 
 		if ( @unlink( $file_path ) || ( function_exists( 'wp_delete_file' ) && wp_delete_file( $file_path ) ) ) {
 			// Hapus dari daftar aktif yang terdeteksi di database.

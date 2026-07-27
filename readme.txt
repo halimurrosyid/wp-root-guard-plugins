@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.8.0
+Stable tag: 2.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,17 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.9.0 =
+* Keamanan: Penguatan proteksi Path Traversal di 4 fungsi kritis (inspect, restore, diff, delete) menggunakan `realpath()` untuk mencegah path traversal via URL-encoded dan double-slash.
+* Keamanan: Validasi whitelist prefix path untuk `restore_core_file()` — hanya mengizinkan pemulihan berkas core WordPress resmi (wp-admin/, wp-includes/, dll).
+* Perbaikan Bug: `enable_ip_blocker` kini tersimpan dengan benar saat simpan pengaturan (sebelumnya toggle tidak berfungsi).
+* Perbaikan Bug: Sanitasi `admin_email` kini menggunakan `sanitize_email()` yang tepat (sebelumnya `sanitize_text_field()`).
+* Perbaikan Bug: Tabel `Folder Asing` kini dilengkapi tombol **Karantina** agar konsisten dengan tabel ancaman lainnya.
+* Perbaikan Bug: HTML wrapper `<div class="rg-card">` yang hilang di Tabel 1 (Folder Asing) dan Tabel 2 (Core Integrity) telah diperbaiki — styling card kini konsisten di semua tabel.
+* Perbaikan Bug: Teks empty state Tabel 1 dan Tabel 3 yang masih hardcoded bahasa Inggris telah diterjemahkan ke bahasa Indonesia.
+* Perbaikan: Pesan sukses uji coba Telegram diperbarui — tidak lagi menyebut "Tombol Interaktif" yang sudah dihapus sejak v2.5.0.
+* Perbaikan: `uninstall.php` kini membersihkan SEMUA opsi database (`blocked_ips`, `active_files`, `active_core_threats`, dll) dan membersihkan blok IP dari `.htaccess` secara otomatis.
 
 = 2.8.0 =
 * Redesain UI/UX Mayor: Implementasi Sticky Floating Bulk Action Bar (melayang saat scroll), penambahan Badge Ringkasan Jumlah Ancaman di setiap header tabel, dan penyempurnaan estetika tombol serta tata letak responsif.
