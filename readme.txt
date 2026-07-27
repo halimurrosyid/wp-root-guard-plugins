@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.3.1
+Stable tag: 2.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,6 +22,7 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 * Uploads PHP Security Guard: Memindai dan mengisolasi berkas eksekusi PHP ilegal di dalam folder media wp-content/uploads/.
 * Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
 * Inspektur Kode Berkas (Secure Code Inspector): Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).
+* Tombol Aksi Interaktif Telegram: Eksekusi tindakan keamanan langsung dari obrolan Telegram (Karantina, Whitelist, Hapus) dengan 4 lapis keamanan kriptografi HMAC-SHA256 & Secret Token.
 * Notifikasi Instan Real-Time: Pengiriman notifikasi peringatan instan ke Telegram Bot API dan Email Administrator.
 * Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ yang dikunci ketat dengan .htaccess.
 
@@ -40,6 +41,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.4.0 =
+* Fitur Utama Baru: Tombol Aksi Interaktif Telegram (Inline Keyboard Buttons) untuk eksekusi Karantina, Whitelist, dan Hapus Permanen dari Telegram dengan 4 lapis keamanan kriptografi (X-Telegram-Bot-Api-Secret-Token, HMAC-SHA256, Chat ID Authorization, dan Path Traversal Strict Guard).
 
 = 2.3.1 =
 * Perbaikan komprehensif pada pengabaian Whitelist Kustom (user_whitelist) untuk berkas terdaftar yang mengalami perubahan integritas/hash (seperti .htaccess).

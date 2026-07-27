@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.4.0 (27 Juli 2026)
+- **Fitur Utama Mayor**: **Tombol Aksi Interaktif Telegram & REST API Webhook Remote Execution System** — Penambahan papan tombol interaktif (*Inline Keyboard Buttons*) langsung pada notifikasi Telegram untuk eksekusi 1-klik: **🔒 Karantina**, **🛡️ Whitelist**, dan **🗑️ Hapus Permanen**. Dilengkapi 4 lapis keamanan kriptografi tanpa celah (*X-Telegram-Bot-Api-Secret-Token 64-bit*, *HMAC-SHA256 Signed Payload*, *Telegram Chat ID Authorization Lock*, dan *Path Traversal Strict Guard*).
+
 ### v2.3.1 (24 Juli 2026)
 - **Bugfix**: Perbaikan pengabaian Whitelist Kustom (`user_whitelist`) pada berkas terdaftar yang mengalami perubahan nilai hash MD5 (seperti `.htaccess`), sehingga berkas yang sudah dipercayai tidak akan lagi dimunculkan kembali sebagai ancaman modifikasi.
 
