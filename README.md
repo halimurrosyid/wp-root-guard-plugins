@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.7.0 (27 Juli 2026)
+- **Fitur Utama Baru**: **Pemulihan Berkas Core Masal (Bulk Core Auto-Repair)** — Menambahkan pilihan `🛠️ Perbaiki Core Masal (Unduh dari WordPress.org)` pada *Bar Aksi Massal (Bulk Actions)*. Administrator kini dapat mencentang semua berkas core yang terindikasi berubah/dimodifikasi lalu menekan tombol **Terapkan (Apply)** untuk memulihkan seluruh berkas tersebut secara otomatis langsung dari SVN resmi WordPress.org dalam 1 kali klik.
+
 ### v2.6.0 (27 Juli 2026)
 - **Fitur Baru**: **Kolom Waktu Modifikasi Berkas Core (WIB)** — Menambahkan kolom *Waktu Modifikasi / Terdeteksi* pada Tabel Integritas Berkas Core (`wp-admin`, `wp-includes`, `root`) dengan format Waktu Indonesia Barat (WIB), sehingga Administrator dapat melihat tanggal dan jam tepat kapan berkas core dimodifikasi atau disusupi.
 

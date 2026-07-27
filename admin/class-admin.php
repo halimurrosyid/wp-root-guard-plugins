@@ -302,7 +302,11 @@ class Admin {
 				if ( ! empty( $action_type ) && ! empty( $items ) ) {
 					$success_count = 0;
 					foreach ( $items as $item ) {
-						if ( 'bulk_trust' === $action_type ) {
+						if ( 'bulk_fix_core' === $action_type ) {
+							if ( Scanner::restore_core_file( $item ) ) {
+								$success_count++;
+							}
+						} elseif ( 'bulk_trust' === $action_type ) {
 							if ( Settings::add_to_whitelist( $item ) ) {
 								$success_count++;
 							}
@@ -324,7 +328,9 @@ class Admin {
 
 					Scanner::perform_scan();
 
-					if ( 'bulk_trust' === $action_type ) {
+					if ( 'bulk_fix_core' === $action_type ) {
+						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_fixed_core', 'count' => $success_count ), $redirect_url ) );
+					} elseif ( 'bulk_trust' === $action_type ) {
 						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_trusted', 'count' => $success_count ), $redirect_url ) );
 					} elseif ( 'bulk_quarantine' === $action_type ) {
 						wp_safe_redirect( add_query_arg( array( 'message' => 'bulk_quarantined', 'count' => $success_count ), $redirect_url ) );
@@ -560,6 +566,10 @@ class Admin {
 				break;
 			case 'ip_unblocked':
 				$notice_text = esc_html__( 'Blokir alamat IP berhasil dibuka.', 'wp-root-guard' );
+				break;
+			case 'bulk_fixed_core':
+				$count       = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text = sprintf( /* translators: %d: jumlah berkas */ esc_html__( '%d berkas core WordPress yang dipilih berhasil dipulihkan secara masal dari SVN resmi WordPress.org.', 'wp-root-guard' ), $count );
 				break;
 			case 'bulk_trusted':
 				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
@@ -848,6 +858,7 @@ class Admin {
 							<strong style="font-size: 14px; color: #1e293b;">⚡ <?php esc_html_e( 'Aksi Massal (Bulk Actions):', 'wp-root-guard' ); ?></strong>
 							<select name="bulk_action_type" id="rg_bulk_action_type" style="min-width: 220px; padding: 5px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
 								<option value=""><?php esc_html_e( '— Pilih Tindakan Massal —', 'wp-root-guard' ); ?></option>
+								<option value="bulk_fix_core">🛠️ <?php esc_html_e( 'Perbaiki Core Masal (Unduh dari WordPress.org)', 'wp-root-guard' ); ?></option>
 								<option value="bulk_trust">👍 <?php esc_html_e( 'Trust Selected (Tambah ke Whitelist)', 'wp-root-guard' ); ?></option>
 								<option value="bulk_quarantine">🔒 <?php esc_html_e( 'Karantina Selected', 'wp-root-guard' ); ?></option>
 								<option value="bulk_delete">🗑️ <?php esc_html_e( 'Hapus Permanen Selected', 'wp-root-guard' ); ?></option>
@@ -1496,7 +1507,9 @@ class Admin {
 						}
 
 						var message = '';
-						if (action === 'bulk_trust') {
+						if (action === 'bulk_fix_core') {
+							message = 'Apakah Anda yakin ingin MEMPERBAIKI ' + checkedCount + ' berkas core yang dipilih dengan mengunduh berkas asli resmi langsung dari SVN WordPress.org?';
+						} else if (action === 'bulk_trust') {
 							message = 'Apakah Anda yakin ingin menambahkan ' + checkedCount + ' item ancaman yang dipilih ke Whitelist Kustom?';
 						} else if (action === 'bulk_quarantine') {
 							message = 'Apakah Anda yakin ingin memindahkan ' + checkedCount + ' item ancaman yang dipilih ke Karantina?';
