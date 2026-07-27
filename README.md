@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v2.5.1 (27 Juli 2026)
+- **Bugfix & Akurasi Pemindaian**: **Penyelesaian Diskrepan Line-Ending (CRLF vs LF)** — Menambahkan normalisasi otomatis karakter perpindahan baris (`\r\n` ke `\n`) saat menghitung MD5 hash berkas core, sehingga berkas asli resmi tidak akan lagi mengalami *false positive* (terdeteksi dimodifikasi padahal kodenya sama persis).
+
 ### v2.5.0 (27 Juli 2026)
 - **Refactoring Keamanan Utama**: **Pure 100% Read-Only Telegram Notification Architecture** — Menghapus seluruh fungsionalitas Webhook REST API eksekusi jarak jauh, sehingga notifikasi Telegram kembali murni 100% *Read-Only Notification* (hanya mengirim informasi peringatan tanpa membuka akses endpoint eksekusi eksternal), menjamin tingkat keamanan tertinggi bagi situs web Anda.
 

@@ -186,6 +186,14 @@ class Scanner {
 
 			// Pengecekan: Berkas Terdaftar di baseline root tapi MD5 Hash Berbeda (Dimodifikasi)
 			} elseif ( ! in_array( $file, $user_whitelist, true ) && isset( $baseline_files[ $file ] ) && $baseline_files[ $file ] !== $current_hash ) {
+				$local_content = @file_get_contents( $file_path );
+				if ( ! empty( $local_content ) ) {
+					$normalized_hash = md5( str_replace( "\r\n", "\n", $local_content ) );
+					if ( isset( $baseline_files[ $file ] ) && $baseline_files[ $file ] === $normalized_hash ) {
+						continue;
+					}
+				}
+
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 				if ( file_exists( $file_path ) ) {
 					$ctime = filectime( $file_path );
@@ -252,7 +260,16 @@ class Scanner {
 					$current_hash = md5_file( $full_path );
 					if ( $current_hash !== $expected_hash ) {
 						
-						// Lewati jika berkas ini adalah berkas pengaturan pengguna yang wajar (seperti wp-config.php tidak masuk checksum, tapi just in case)
+						// Normalisasi line-ending (\r\n ke \n) untuk kompatibilitas server Windows/Linux/FTP
+						$local_content = @file_get_contents( $full_path );
+						if ( ! empty( $local_content ) ) {
+							$normalized_hash = md5( str_replace( "\r\n", "\n", $local_content ) );
+							if ( $normalized_hash === $expected_hash ) {
+								continue;
+							}
+						}
+
+						// Lewati jika berkas ini adalah berkas pengaturan pengguna yang wajar (seperti wp-config.php)
 						if ( 'wp-config.php' === $relative_path ) {
 							continue;
 						}

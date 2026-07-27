@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.5.0
+Stable tag: 2.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -40,6 +40,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.5.1 =
+* Perbaikan masalah False Positive pada pemindaian Integritas Berkas Core akibat perbedaan line ending (CRLF vs LF) antar platform server/Git/FTP (penambahan normalisasi otomatis CRLF ke LF).
 
 = 2.5.0 =
 * Penyederhanaan Notifikasi Telegram menjadi murni 100% Read-Only Notification tanpa membuka Webhook REST API eksekusi eksternal untuk menjamin keamanan maksimal.
