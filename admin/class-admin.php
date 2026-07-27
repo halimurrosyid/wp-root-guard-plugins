@@ -13,6 +13,7 @@ use WPRootGuard\Scanner;
 use WPRootGuard\Logger;
 use WPRootGuard\Cron;
 use WPRootGuard\Blocker;
+use WPRootGuard\TelegramWebhook;
 
 // Mencegah akses langsung.
 if ( ! defined( 'ABSPATH' ) ) {

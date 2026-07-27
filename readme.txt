@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 2.4.0
+Stable tag: 2.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -41,6 +41,9 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 2.4.1 =
+* Perbaikan Fatal Error pada penanganan aksi Telegram Webhook akibat belum di-impornya namespace TelegramWebhook di admin/class-admin.php.
 
 = 2.4.0 =
 * Fitur Utama Baru: Tombol Aksi Interaktif Telegram (Inline Keyboard Buttons) untuk eksekusi Karantina, Whitelist, dan Hapus Permanen dari Telegram dengan 4 lapis keamanan kriptografi (X-Telegram-Bot-Api-Secret-Token, HMAC-SHA256, Chat ID Authorization, dan Path Traversal Strict Guard).
