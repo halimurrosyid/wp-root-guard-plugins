@@ -1837,7 +1837,7 @@ class Admin {
 										<strong><?php esc_html_e( 'Aktifkan Blocker Akses Webshell & IP Penyerang (.htaccess)', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Otomatis mencegat percobaan eksekusi PHP di folder uploads dan query string berbahaya, serta memblokir IP penyerang di .htaccess.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Saat diaktifkan, sistem akan otomatis mencegat percobaan eksekusi PHP di folder uploads dan query string berbahaya, serta memblokir IP penyerang di .htaccess. (Default: Nonaktif).', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>

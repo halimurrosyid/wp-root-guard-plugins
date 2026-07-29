@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.1.2 (29 Juli 2026)
+- **IP Blocker Disabled by Default**: Fitur pemblokiran IP dan interseptor request HTTP kini dikonfigurasi **Nonaktif (OFF)** secara default. Dapat diaktifkan/dinonaktifkan manual di menu Pengaturan.
+
 ### v3.1.1 (29 Juli 2026)
 - **Penyempurnaan Halaman Blokir 403 Forbidden**: Menampilkan rincian IP, alasan pemblokiran, serta tautan pembuka blokir khusus Administrator ke `/wp-admin/`.
 

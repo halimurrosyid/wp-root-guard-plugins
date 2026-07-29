@@ -144,7 +144,7 @@ class Settings {
 		$defaults = array(
 			'scan_interval'                => 'every_5_minutes',
 			'enable_uploads_php_scan'      => true,
-			'enable_ip_blocker'            => true,
+			'enable_ip_blocker'            => false,
 			'enable_auto_quarantine'       => false,
 			'enable_email_notifications'    => false,
 			'admin_email'                  => get_option( 'admin_email' ),
