@@ -19,6 +19,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.1.1 (29 Juli 2026)
+- **Penyempurnaan Halaman Blokir 403 Forbidden**: Menampilkan rincian IP, alasan pemblokiran, serta tautan pembuka blokir khusus Administrator ke `/wp-admin/`.
+
 ### v3.1.0 (27 Juli 2026)
 - **Status & Diagnostik Alasan Gagal Tombol Perbaiki**: Tombol "Perbaiki" (dan Aksi Massal) kini melaporkan status keberhasilan/kegagalan beserta **alasan spesifik kegagalannya** (seperti: izin akses folder/write permission ditolak server, koneksi HTTP/cURL timeout ke SVN WordPress.org, atau HTTP response status error).
 

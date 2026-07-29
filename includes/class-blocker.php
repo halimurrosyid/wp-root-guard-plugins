@@ -96,9 +96,24 @@ class Blocker {
 			// Berikan respons HTTP 403 Forbidden dan langsung hentikan proses
 			header( 'HTTP/1.1 403 Forbidden' );
 			header( 'Status: 403 Forbidden' );
+
+			$die_message  = '<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; line-height: 1.6; color: #1e293b;">';
+			$die_message .= '<h2 style="color: #dc2626; margin-top: 0;">🚫 ' . esc_html__( 'Akses Ditolak oleh WP Root Guard', 'wp-root-guard' ) . '</h2>';
+			$die_message .= '<p>' . sprintf( esc_html__( 'Alamat IP Anda (%s) atau permintaan HTTP yang Anda kirimkan terdeteksi mengandung aktivitas mencurigakan oleh sistem keamanan WP Root Guard.', 'wp-root-guard' ), '<code>' . esc_html( $ip ) . '</code>' ) . '</p>';
+			if ( ! empty( $reason ) ) {
+				$die_message .= '<p style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px 14px; border-radius: 4px;"><strong>' . esc_html__( 'Alasan Pemblokiran:', 'wp-root-guard' ) . '</strong> ' . esc_html( $reason ) . '</p>';
+			}
+			$die_message .= '<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;">';
+			$die_message .= '<p style="font-size: 13px; color: #64748b;">' . sprintf(
+				/* translators: %s: URL wp-admin */
+				wp_kses_post( __( 'Jika Anda adalah Administrator situs ini, Anda tetap dapat mengakses dasbor di %s untuk mengelola dan membuka pemblokiran IP ini di menu <strong>Root Guard -> Proteksi IP Terblokir</strong>.', 'wp-root-guard' ) ),
+				'<a href="' . esc_url( admin_url() ) . '" style="color: #2563eb;">' . esc_html( admin_url() ) . '</a>'
+			) . '</p>';
+			$die_message .= '</div>';
+
 			wp_die(
-				esc_html__( 'Akses Ditolak: Aktivitas mencurigakan terdeteksi oleh WP Root Guard.', 'wp-root-guard' ),
-				esc_html__( '403 Forbidden', 'wp-root-guard' ),
+				$die_message,
+				esc_html__( '403 Forbidden - WP Root Guard', 'wp-root-guard' ),
 				array( 'response' => 403 )
 			);
 		}
