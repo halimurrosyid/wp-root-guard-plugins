@@ -1,0 +1,120 @@
+# ==============================================================================
+# .gitignore — WordPress Plugin: WP Root Guard
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Build, Distribution & Archives
+# ------------------------------------------------------------------------------
+dist/
+build/
+releases/
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ------------------------------------------------------------------------------
+# 2. Credentials, Secrets & Environment
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+*credensial*
+*credential*
+*secret*
+*password*
+docs/*credensial*
+docs/*credential*
+
+# ------------------------------------------------------------------------------
+# 3. Logs, Debugging & Temporary Files
+# ------------------------------------------------------------------------------
+*.log
+debug.log
+error_log
+wp-content/debug.log
+scratch/
+.tmp/
+tmp/
+temp/
+.cache/
+
+# ------------------------------------------------------------------------------
+# 4. Local Database Dumps & WordPress Artifacts
+# ------------------------------------------------------------------------------
+*.sql
+*.sql.gz
+*.sqlite
+*.db
+wp-config.php
+wp-config-local.php
+.htaccess.backup*
+.htaccess.save*
+
+# Docker local data directories (jika ada volume lokal)
+db_data/
+wp_data/
+docker-compose.override.yml
+
+# ------------------------------------------------------------------------------
+# 5. Dependency Managers (Composer & Node.js)
+# ------------------------------------------------------------------------------
+vendor/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ------------------------------------------------------------------------------
+# 6. Testing & CI Artifacts
+# ------------------------------------------------------------------------------
+.phpunit.result.cache
+.phpunit.cache/
+coverage/
+*.coverage
+.phpcs-cache
+.php-cs-fixer.cache
+
+# ------------------------------------------------------------------------------
+# 7. Operating System Files
+# ------------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ------------------------------------------------------------------------------
+# 8. IDEs & Code Editors
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*.swn
+*.bak

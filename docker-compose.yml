@@ -1,0 +1,79 @@
+services:
+  # ===========================
+  # Database (MySQL 8.0)
+  # ===========================
+  db:
+    image: mysql:8.0
+    container_name: wp_lab_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123!          # Ganti sesuai keinginan
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wpuser
+      MYSQL_PASSWORD: wppass123!
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - wp_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpass123!"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================
+  # WordPress (latest)
+  # ===========================
+  wordpress:
+    image: wordpress:latest
+    container_name: wp_lab_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "50080:80"                                # 🔥 Port uncommon (>50000)
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppass123!
+    volumes:
+      - wp_data:/var/www/html
+    networks:
+      - wp_network
+
+  # ===========================
+  # Adminer (manajemen DB ringan)
+  # ===========================
+  adminer:
+    image: adminer:latest
+    container_name: wp_lab_adminer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "50081:8080"                              # 🔥 Port uncommon untuk Adminer
+    networks:
+      - wp_network
+
+# ===========================
+# Volume Persisten
+# ===========================
+volumes:
+  db_data:
+    driver: local
+  wp_data:
+    driver: local
+
+# ===========================
+# Network Internal
+# ===========================
+networks:
+  wp_network:
+    driver: bridge
