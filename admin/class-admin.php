@@ -33,7 +33,7 @@ class Admin {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 		add_action( 'admin_init', array( $this, 'handle_admin_actions' ) );
 		add_action( 'admin_notices', array( $this, 'render_threat_notice' ) );
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_styles' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
 		// Tambahkan link "Settings" pada daftar plugin WordPress.
 		add_filter( 'plugin_action_links_' . plugin_basename( WP_ROOT_GUARD_FILE ), array( $this, 'add_action_links' ) );
@@ -59,12 +59,15 @@ class Admin {
 	}
 
 	/**
-	 * Memuat berkas CSS khusus admin untuk halaman plugin.
+	 * Memuat berkas CSS dan JavaScript khusus admin untuk halaman plugin.
+	 *
+	 * OWASP A03:2021 — Injection (CWE-79 XSS).
+	 * Script dan style hanya dimuat di halaman plugin.
 	 *
 	 * @param string $hook Halaman admin saat ini.
 	 */
-	public function enqueue_styles( $hook ) {
-		if ( 'dashboard_page_wp-root-guard' !== $hook ) {
+	public function enqueue_assets( $hook ) {
+		if ( 'dashboard_page_wp-root-guard' !== $hook && 'index.php' !== $hook && false === strpos( $hook, 'wp-root-guard' ) ) {
 			return;
 		}
 
@@ -74,6 +77,44 @@ class Admin {
 			array(),
 			WP_ROOT_GUARD_VERSION
 		);
+
+		wp_enqueue_script(
+			'wp-root-guard-admin',
+			WP_ROOT_GUARD_URL . 'admin/js/wp-root-guard-admin.js',
+			array( 'jquery' ),
+			WP_ROOT_GUARD_VERSION,
+			true
+		);
+
+		wp_localize_script(
+			'wp-root-guard-admin',
+			'wpRootGuard',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'wp_root_guard_admin_action' ),
+				'i18n'    => array(
+					'scanning'             => esc_html__( 'Memindai...', 'wp-root-guard' ),
+					'completed'            => esc_html__( 'Selesai', 'wp-root-guard' ),
+					'error'                => esc_html__( 'Terjadi kesalahan pada server.', 'wp-root-guard' ),
+					'loading_analysis'     => esc_html__( 'Memuat analisis...', 'wp-root-guard' ),
+					'select_bulk_action'   => esc_html__( 'Silakan pilih jenis tindakan massal terlebih dahulu.', 'wp-root-guard' ),
+					'select_bulk_items'    => esc_html__( 'Silakan centang/pilih minimal 1 item ancaman dari tabel.', 'wp-root-guard' ),
+					'hide_old_logs'        => esc_html__( 'Sembunyikan Log Lama', 'wp-root-guard' ),
+					'show_more_logs'       => esc_html__( 'Tampilkan Log Lainnya', 'wp-root-guard' ),
+					'fill_telegram_fields' => esc_html__( 'Mohon isi Bot Token dan Chat ID terlebih dahulu untuk uji coba!', 'wp-root-guard' ),
+					'fill_email_field'     => esc_html__( 'Mohon isi alamat email terlebih dahulu untuk uji coba!', 'wp-root-guard' ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Kompatibilitas ke belakang untuk pemanggilan method enqueue_styles.
+	 *
+	 * @param string $hook Halaman admin saat ini.
+	 */
+	public function enqueue_styles( $hook ) {
+		$this->enqueue_assets( $hook );
 	}
 
 	/**
@@ -146,7 +187,7 @@ class Admin {
 	public function handle_admin_actions() {
 		// Penanganan untuk aksi GET "Check Update" dari daftar plugin
 		if ( isset( $_GET['wp_root_guard_check_update'] ) ) {
-			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( $_GET['_wpnonce'], 'wp_root_guard_check_update' ) && current_user_can( 'manage_options' ) ) {
+			if ( isset( $_GET['_wpnonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'wp_root_guard_check_update' ) && current_user_can( 'manage_options' ) ) {
 				delete_transient( 'wp_root_guard_latest_github_release' );
 				delete_site_transient( 'update_plugins' );
 				if ( function_exists( 'wp_update_plugins' ) ) {
@@ -157,21 +198,52 @@ class Admin {
 			}
 		}
 
-		if ( ! isset( $_POST['wp_root_guard_action_nonce'] ) ) {
+		// Guard 1: hanya dieksekusi di halaman plugin sebelum memproses aksi form.
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		if ( 'wp-root-guard' !== $page ) {
 			return;
 		}
 
-		if ( ! wp_verify_nonce( $_POST['wp_root_guard_action_nonce'], 'wp_root_guard_admin_action' ) ) {
-			wp_die( esc_html__( 'Verifikasi keamanan gagal. Silakan coba lagi.', 'wp-root-guard' ) );
-		}
-
+		// Guard 2: verifikasi izin administrator.
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Anda tidak memiliki izin untuk melakukan aksi ini.', 'wp-root-guard' ) );
 		}
 
-		$action = isset( $_POST['rg_action'] ) ? sanitize_text_field( $_POST['rg_action'] ) : '';
+		// Guard 3: verifikasi form nonce (mendukung wp_root_guard_action_nonce dan _wpnonce).
+		$nonce = '';
+		if ( isset( $_POST['wp_root_guard_action_nonce'] ) ) {
+			$nonce = sanitize_text_field( wp_unslash( $_POST['wp_root_guard_action_nonce'] ) );
+		} elseif ( isset( $_POST['_wpnonce'] ) ) {
+			$nonce = sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) );
+		} elseif ( isset( $_GET['_wpnonce'] ) ) {
+			$nonce = sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) );
+		}
 
-		$current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'dashboard';
+		if ( empty( $nonce ) ) {
+			return;
+		}
+
+		$action = isset( $_POST['rg_action'] ) ? sanitize_text_field( wp_unslash( $_POST['rg_action'] ) ) : ( isset( $_GET['rg_action'] ) ? sanitize_text_field( wp_unslash( $_GET['rg_action'] ) ) : '' );
+
+		$valid_nonce = wp_verify_nonce( $nonce, 'wp_root_guard_admin_action' );
+		if ( ! $valid_nonce && ! empty( $action ) ) {
+			$valid_nonce = wp_verify_nonce( $nonce, 'wp_root_guard_action_' . $action );
+		}
+
+		if ( ! $valid_nonce ) {
+			Logger::log(
+				esc_html__( 'Nonce tidak valid pada aksi admin', 'wp-root-guard' ),
+				$action,
+				esc_html__( 'Blocked', 'wp-root-guard' )
+			);
+			wp_die(
+				esc_html__( 'Verifikasi keamanan gagal. Silakan coba lagi.', 'wp-root-guard' ),
+				esc_html__( 'Nonce Invalid', 'wp-root-guard' ),
+				array( 'response' => 403 )
+			);
+		}
+
+		$current_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'dashboard';
 		$redirect_url = admin_url( 'index.php?page=wp-root-guard&tab=' . $current_tab );
 
 		switch ( $action ) {
@@ -487,10 +559,17 @@ class Admin {
 	 * AJAX Handler untuk mengambil antrean (queue) item yang akan dipindai.
 	 */
 	public function ajax_get_scan_queue() {
-		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+		$nonce_valid = check_ajax_referer( 'wp_root_guard_admin_action', 'security', false ) ||
+		               check_ajax_referer( 'wp_root_guard_admin_action', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'security', false );
+
+		if ( ! $nonce_valid ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Verifikasi keamanan gagal.', 'wp-root-guard' ) ), 403 );
+		}
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ), 403 );
 		}
 
 		$queue = array();
@@ -534,36 +613,61 @@ class Admin {
 	 * AJAX Handler untuk menjalankan pemindaian backend yang sesungguhnya secara instan.
 	 */
 	public function ajax_run_scan() {
-		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+		$nonce_valid = check_ajax_referer( 'wp_root_guard_admin_action', 'security', false ) ||
+		               check_ajax_referer( 'wp_root_guard_admin_action', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'security', false );
+
+		if ( ! $nonce_valid ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Verifikasi keamanan gagal.', 'wp-root-guard' ) ), 403 );
+		}
 
 		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ), 403 );
 		}
 
 		// Rate Limiting: batasi pemindaian maksimal 1x setiap 20 detik per pengguna
 		$rate_key = 'wprg_scan_rate_' . get_current_user_id();
 		if ( get_transient( $rate_key ) ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'Terlalu cepat. Harap tunggu 20 detik sebelum memindai ulang.', 'wp-root-guard' ) ) );
+			wp_send_json_error( array( 'message' => esc_html__( 'Terlalu cepat. Harap tunggu 20 detik sebelum memindai ulang.', 'wp-root-guard' ) ), 429 );
 			return;
 		}
 		set_transient( $rate_key, 1, 20 );
 
-		Scanner::perform_scan();
+		$results = Scanner::perform_scan();
 
-		wp_send_json_success( array( 'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ) ) );
+		wp_send_json_success( array(
+			'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ),
+			'results' => $results,
+		) );
 	}
 
 	/**
 	 * AJAX Handler untuk menginspeksi isi berkas secara aman.
 	 */
 	public function ajax_inspect_file() {
-		check_ajax_referer( 'wp_root_guard_admin_action', 'security' );
+		$nonce_valid = check_ajax_referer( 'wp_root_guard_admin_action', 'security', false ) ||
+		               check_ajax_referer( 'wp_root_guard_admin_action', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'nonce', false ) ||
+		               check_ajax_referer( 'wp_root_guard_ajax', 'security', false );
 
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ) );
+		if ( ! $nonce_valid ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Verifikasi keamanan gagal.', 'wp-root-guard' ) ), 403 );
 		}
 
-		$file = isset( $_POST['file'] ) ? sanitize_text_field( $_POST['file'] ) : '';
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Akses ditolak.', 'wp-root-guard' ) ), 403 );
+		}
+
+		$file = isset( $_POST['file'] ) ? sanitize_text_field( wp_unslash( $_POST['file'] ) ) : '';
+		if ( empty( $file ) && isset( $_POST['path'] ) ) {
+			$file = sanitize_text_field( wp_unslash( $_POST['path'] ) );
+		}
+
+		if ( empty( $file ) ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Path berkas tidak valid.', 'wp-root-guard' ) ), 400 );
+		}
+
 		$res  = Scanner::inspect_file_content( $file );
 
 		if ( isset( $res['success'] ) && $res['success'] ) {
@@ -902,7 +1006,7 @@ class Admin {
 
 				<!-- PANEL TOMBOL UTAMA -->
 				<div id="rg-actions-bar" class="rg-actions-bar">
-					<button type="button" class="button button-primary button-large" onclick="startDynamicScan()">
+					<button type="button" id="rg-scan-now" class="button button-primary button-large" onclick="startDynamicScan()">
 						<?php esc_html_e( 'Pindai Sekarang (Scan Now)', 'wp-root-guard' ); ?>
 					</button>
 					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membangun ulang baseline? Ini akan merekam kondisi folder dan berkas root saat ini sebagai standar aman yang baru.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
@@ -919,8 +1023,10 @@ class Admin {
 				$active_files   = array();
 				$active_core    = array();
 				$active_uploads = array();
+
 				foreach ( $unknown_folders as $item ) {
-					if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $item['status'] ) {
+					// Lewati folder atau berkas yang sudah berhasil dikarantina
+					if ( esc_html__( 'Quarantined Automatically', 'wp-root-guard' ) === $item['status'] || esc_html__( 'Quarantined', 'wp-root-guard' ) === $item['status'] ) {
 						continue;
 					}
 
@@ -956,7 +1062,7 @@ class Admin {
 								<?php esc_html_e( 'Terapkan (Apply)', 'wp-root-guard' ); ?>
 							</button>
 							<span style="font-size: 13px; color: #64748b; margin-left: auto;">
-								<span id="rg-selected-count" style="font-weight: bold; color: #2563eb; font-size: 15px;">0</span> <?php esc_html_e( 'item dipilih dari seluruh tabel', 'wp-root-guard' ); ?>
+								<span id="rg-selected-count" class="rg-bulk-count" style="font-weight: bold; color: #2563eb; font-size: 15px;">0</span> <?php esc_html_e( 'item dipilih dari seluruh tabel', 'wp-root-guard' ); ?>
 							</span>
 						</div>
 				<?php endif; ?>
@@ -994,7 +1100,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_folders as $folder ) : ?>
 										<tr>
-											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $folder['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $folder['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $folder['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $folder['path'] ); ?></code></td>
 											<td><?php echo esc_html( $folder['created_time'] ); ?></td>
@@ -1049,7 +1155,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_core as $file ) : ?>
 										<tr>
-											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -1079,7 +1185,7 @@ class Admin {
 												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
 											</td>
 											<td>
-												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+												<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $file['name'] ); ?>" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
 													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 												</button>
 												<?php if ( 'Suspicious Core Injection' === $file['status'] ) : ?>
@@ -1142,7 +1248,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_files as $file ) : ?>
 										<tr>
-											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -1166,7 +1272,7 @@ class Admin {
 												<span class="rg-badge <?php echo esc_attr( $badge_class ); ?>"><?php echo esc_html( $status_label ); ?></span>
 											</td>
 											<td>
-												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+												<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $file['name'] ); ?>" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
 													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 												</button>
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
@@ -1220,7 +1326,7 @@ class Admin {
 								<tbody>
 									<?php foreach ( $active_uploads as $file ) : ?>
 										<tr>
-											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox" onchange="updateSelectedCount()"></td>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
 											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
 											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
 											<td>
@@ -1233,7 +1339,7 @@ class Admin {
 												<span class="rg-badge badge-danger"><?php echo esc_html( $file['status'] ); ?></span>
 											</td>
 											<td>
-												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+												<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $file['name'] ); ?>" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
 													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 												</button>
 												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
@@ -1297,7 +1403,7 @@ class Admin {
 											<td><span class="rg-badge badge-safe">🔒 <?php echo esc_html( $status_label ); ?></span></td>
 											<td>
 												<?php if ( isset( $item['type'] ) && 'file' === $item['type'] ) : ?>
-													<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $item['quarantine_name'] ); ?>')">
+													<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $item['quarantine_name'] ); ?>" onclick="openCodeInspector('<?php echo esc_js( $item['quarantine_name'] ); ?>')">
 														👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 													</button>
 												<?php endif; ?>
@@ -1393,7 +1499,7 @@ class Admin {
 											<td><strong><?php echo esc_html( $folder_name ); ?></strong></td>
 											<td><code><?php echo esc_html( ABSPATH . $folder_name ); ?></code></td>
 											<td>
-												<button type="button" class="button button-small button-secondary" onclick="openCodeInspector('<?php echo esc_js( $folder_name ); ?>')">
+												<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $folder_name ); ?>" onclick="openCodeInspector('<?php echo esc_js( $folder_name ); ?>')">
 													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 												</button>
 												<button type="button" class="button button-small button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin mematikan status percaya untuk item ini?', 'wp-root-guard' ) ); ?>')) { untrustFolder('<?php echo esc_js( $folder_name ); ?>'); }">
@@ -1516,21 +1622,6 @@ class Admin {
 										🔽 <?php echo esc_html( sprintf( /* translators: %d: jumlah log tersembunyi */ __( 'Tampilkan %d Log Lainnya', 'wp-root-guard' ), count( $logs_hidden ) ) ); ?>
 									</button>
 								</div>
-								<script type="text/javascript">
-									function toggleAllLogs(btn) {
-										var hidden = document.getElementById('rg-log-body-hidden');
-										var container = document.getElementById('rg-log-container');
-										if (hidden.style.display === 'none') {
-											hidden.style.display = '';
-											container.style.maxHeight = '600px';
-											btn.innerHTML = '🔼 <?php echo esc_js( __( 'Sembunyikan Log Lama', 'wp-root-guard' ) ); ?>';
-										} else {
-											hidden.style.display = 'none';
-											container.style.maxHeight = '340px';
-											btn.innerHTML = '🔽 <?php echo esc_js( sprintf( __( 'Tampilkan %d Log Lainnya', "wp-root-guard" ), count( $logs_hidden ) ) ); ?>';
-										}
-									}
-								</script>
 							<?php endif; ?>
 						<?php endif; ?>
 					</div>
@@ -1567,228 +1658,6 @@ class Admin {
 						</div>
 					</div>
 				</div>
-
-				<script type="text/javascript">
-					function openCodeInspector(fileName) {
-						var modal = document.getElementById('rg-code-modal');
-						var filenameEl = document.getElementById('rg-modal-filename');
-						var statsEl = document.getElementById('rg-modal-stats');
-						var loadingEl = document.getElementById('rg-modal-loading');
-						var loadingPct = document.getElementById('rg-modal-loading-pct');
-						var loadingBar = document.getElementById('rg-modal-loading-bar');
-						var errorEl = document.getElementById('rg-modal-error');
-						var codeTable = document.getElementById('rg-modal-codetable');
-						var codeBody = document.getElementById('rg-modal-codebody');
-						var actionsEl = document.getElementById('rg-modal-actions');
-
-						if (!modal) return;
-
-						filenameEl.innerText = fileName;
-						statsEl.innerText = 'Memuat analisis...';
-						if (loadingPct) loadingPct.innerText = '15%';
-						if (loadingBar) loadingBar.style.width = '15%';
-						loadingEl.style.display = 'block';
-						errorEl.style.display = 'none';
-						codeTable.style.display = 'none';
-						codeBody.innerHTML = '';
-						actionsEl.innerHTML = '';
-						modal.style.display = 'flex';
-
-						var data = {
-							action: 'wp_root_guard_inspect_file',
-							file: fileName,
-							security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
-						};
-
-						if (loadingPct) loadingPct.innerText = '45%';
-						if (loadingBar) loadingBar.style.width = '45%';
-
-						jQuery.post(ajaxurl, data, function(response) {
-							if (loadingPct) loadingPct.innerText = '90%';
-							if (loadingBar) loadingBar.style.width = '90%';
-
-							setTimeout(function() {
-								loadingEl.style.display = 'none';
-
-								if (response.success && response.data) {
-									var res = response.data;
-									var statsText = 'Total Baris: ' + res.total_lines;
-									if (res.total_dangers > 0) {
-										statsText += ' | ⚠️ TERDETEKSI ' + res.total_dangers + ' INDIKASI BAHAYA MALWARE';
-									} else {
-										statsText += ' | ✅ Tidak terdeteksi tanda tangan malware berbahaya';
-									}
-									statsEl.innerText = statsText;
-
-									var rowsHtml = '';
-									res.lines.forEach(function(item) {
-										var isDanger = item.dangers && item.dangers.length > 0;
-										var trStyle = isDanger ? 'background: #450a0a; color: #fecaca; font-weight: 600;' : 'color: #e2e8f0;';
-										var lineStyle = isDanger ? 'background: #7f1d1d; color: #fca5a5;' : 'background: #1e293b; color: #64748b;';
-										
-										rowsHtml += '<tr style="' + trStyle + '">';
-										rowsHtml += '<td style="width: 50px; text-align: right; padding: 2px 10px; user-select: none; border-right: 1px solid #334155; ' + lineStyle + '">' + item.line_number + '</td>';
-										rowsHtml += '<td style="padding: 2px 12px; white-space: pre-wrap; word-break: break-all;">';
-										
-										if (isDanger) {
-											rowsHtml += '<span style="background: #dc2626; color: #ffffff; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; font-weight: bold;">⚠️ BAHAYA: ' + item.dangers.join(', ') + '</span>';
-										}
-										
-										var escapedCode = jQuery('<div/>').text(item.code).html();
-										rowsHtml += escapedCode;
-										rowsHtml += '</td>';
-										rowsHtml += '</tr>';
-									});
-
-									codeBody.innerHTML = rowsHtml;
-									codeTable.style.display = 'table';
-
-									// Tombol aksi di footer modal
-									var actionsHtml = '';
-									actionsHtml += '<button type="button" class="button button-secondary" onclick="trustFolder(\'' + fileName + '\')">👍 Trust File</button>';
-									actionsHtml += '<button type="button" class="button button-secondary" onclick="if(confirm(\'Karantina berkas ini?\')) { submitFolderAction(\'quarantine_file\', \'' + fileName + '\'); }">🔒 Karantina</button>';
-									actionsHtml += '<button type="button" class="button button-link-delete" style="color: #dc2626; border-color: #fca5a5;" onclick="if(confirm(\'Apakah Anda yakin ingin menghapus berkas ini secara PERMANEN?\')) { submitFolderAction(\'delete_file_directly\', \'' + fileName + '\'); }">🗑️ Hapus Permanen</button>';
-									actionsEl.innerHTML = actionsHtml;
-
-								} else {
-									errorEl.innerText = '❌ ' + (response.data ? response.data.message : 'Gagal membaca berkas.');
-									errorEl.style.display = 'block';
-								}
-							}, 150);
-						}).fail(function() {
-							loadingEl.style.display = 'none';
-							errorEl.innerText = '❌ Terjadi kesalahan koneksi server saat membaca berkas.';
-							errorEl.style.display = 'block';
-						});
-					}
-
-					function closeCodeInspector() {
-						var modal = document.getElementById('rg-code-modal');
-						if (modal) modal.style.display = 'none';
-					}
-
-					document.addEventListener('keydown', function(e) {
-						if (e.key === 'Escape') {
-							closeCodeInspector();
-						}
-					});
-
-					function toggleSelectAllTable(masterCheckbox) {
-						var table = masterCheckbox.closest('table');
-						if (table) {
-							var checkboxes = table.querySelectorAll('.rg-item-checkbox');
-							checkboxes.forEach(function(cb) {
-								cb.checked = masterCheckbox.checked;
-							});
-							updateSelectedCount();
-						}
-					}
-
-					function updateSelectedCount() {
-						var count = document.querySelectorAll('.rg-item-checkbox:checked').length;
-						var counterEl = document.getElementById('rg-selected-count');
-						if (counterEl) {
-							counterEl.innerText = count;
-						}
-					}
-
-					function executeBulkAction() {
-						var actionSelect = document.getElementById('rg_bulk_action_type');
-						var action = actionSelect ? actionSelect.value : '';
-						var checkedCount = document.querySelectorAll('.rg-item-checkbox:checked').length;
-
-						if (!action) {
-							alert('Silakan pilih jenis tindakan massal terlebih dahulu.');
-							return;
-						}
-
-						if (checkedCount === 0) {
-							alert('Silakan centang/pilih minimal 1 item ancaman dari tabel.');
-							return;
-						}
-
-						var message = '';
-						if (action === 'bulk_fix_core') {
-							message = 'Apakah Anda yakin ingin MEMPERBAIKI ' + checkedCount + ' berkas core yang dipilih dengan mengunduh berkas asli resmi langsung dari SVN WordPress.org?';
-						} else if (action === 'bulk_trust') {
-							message = 'Apakah Anda yakin ingin menambahkan ' + checkedCount + ' item ancaman yang dipilih ke Whitelist Kustom?';
-						} else if (action === 'bulk_quarantine') {
-							message = 'Apakah Anda yakin ingin memindahkan ' + checkedCount + ' item ancaman yang dipilih ke Karantina?';
-						} else if (action === 'bulk_delete') {
-							message = 'PERINGATAN BAHAYA: Apakah Anda yakin ingin menghapus ' + checkedCount + ' berkas/folder ancaman yang dipilih secara PERMANEN dari server? Aksi ini tidak dapat dibatalkan!';
-						}
-
-						if (confirm(message)) {
-							document.getElementById('rg-bulk-form').submit();
-						}
-					}
-
-					function startDynamicScan() {
-						var statusCard = document.getElementById('rg-status-card');
-						var summaryCard = document.getElementById('rg-summary-card');
-						var actionsBar = document.getElementById('rg-actions-bar');
-						var inlineCard = document.getElementById('rg-scan-inline-card');
-
-						var percentText = document.getElementById('rg-scan-percentage');
-						var progressBar = document.getElementById('rg-scan-bar');
-						var currentItemText = document.getElementById('rg-scan-current-item');
-						
-						// Sembunyikan panel dashboard lama secara halus dan tampilkan scan inline card
-						if (statusCard) statusCard.style.display = 'none';
-						if (summaryCard) summaryCard.style.display = 'none';
-						if (actionsBar) actionsBar.style.display = 'none';
-						inlineCard.classList.remove('hidden');
-
-						var data = {
-							action: 'wp_root_guard_get_scan_queue',
-							security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
-						};
-
-						jQuery.post(ajaxurl, data, function(response) {
-							if (response.success && response.data.queue) {
-								var queue = response.data.queue;
-								var total = queue.length;
-								var current = 0;
-
-								var interval = setInterval(function() {
-									if (current < total) {
-										var item = queue[current];
-										var prefix = item.type === 'folder' ? '📂 Folder: ' : (item.type === 'core' ? '🛡️ Core File: ' : '📄 File: ');
-										currentItemText.innerText = prefix + item.name;
-										
-										var percent = Math.floor((current / total) * 90);
-										percentText.innerText = percent + '%';
-										progressBar.style.width = percent + '%';
-										
-										current++;
-									} else {
-										clearInterval(interval);
-										currentItemText.innerText = '🛡️ Menganalisis hasil & tanda tangan malware...';
-										
-										var scanData = {
-											action: 'wp_root_guard_run_scan',
-											security: '<?php echo esc_js( wp_create_nonce( 'wp_root_guard_admin_action' ) ); ?>'
-										};
-
-										jQuery.post(ajaxurl, scanData, function(scanResponse) {
-											percentText.innerText = '100%';
-											progressBar.style.width = '100%';
-											currentItemText.innerText = '✅ Pemindaian Selesai! Memuat ulang halaman...';
-											
-											setTimeout(function() {
-												window.location.href = '?page=wp-root-guard&tab=dashboard&message=scanned';
-											}, 800);
-										});
-									}
-								}, 30);
-							} else {
-								submitRgAction('scan_now');
-							}
-						}).fail(function() {
-							submitRgAction('scan_now');
-						});
-					}
-				</script>
 
 			<?php elseif ( 'settings' === $active_tab ) : ?>
 				<!-- TAB 2: SETTINGS CONTENT -->
@@ -1932,109 +1801,9 @@ class Admin {
 					</div>
 				</div>
 
-				<script type="text/javascript">
-					document.getElementById('rg-toggle-email').addEventListener('change', function() {
-						var section = document.getElementById('rg-email-fields');
-						if (this.checked) {
-							section.classList.remove('hidden');
-						} else {
-							section.classList.add('hidden');
-						}
-					});
-
-					document.getElementById('rg-toggle-telegram').addEventListener('change', function() {
-						var section = document.getElementById('rg-telegram-fields');
-						if (this.checked) {
-							section.classList.remove('hidden');
-						} else {
-							section.classList.add('hidden');
-						}
-					});
-
-					function triggerTestNotification(action) {
-						var mainForm = document.getElementById('rg-action-form');
-						var actionField = document.getElementById('rg-action-field');
-
-						var oldToken = document.getElementById('rg-test-token');
-						if (oldToken) oldToken.remove();
-						var oldChat = document.getElementById('rg-test-chat');
-						if (oldChat) oldChat.remove();
-						var oldEmail = document.getElementById('rg-test-email');
-						if (oldEmail) oldEmail.remove();
-
-						if (action === 'test_telegram') {
-							var tokenVal = document.getElementById('telegram_bot_token').value;
-							var chatVal = document.getElementById('telegram_chat_id').value;
-
-							if (!tokenVal || !chatVal) {
-								alert('<?php echo esc_js( __( 'Mohon isi Bot Token dan Chat ID terlebih dahulu untuk uji coba!', 'wp-root-guard' ) ); ?>');
-								return;
-							}
-
-							var tokenInput = document.createElement('input');
-							tokenInput.type = 'hidden';
-							tokenInput.name = 'telegram_bot_token';
-							tokenInput.id = 'rg-test-token';
-							tokenInput.value = tokenVal;
-							mainForm.appendChild(tokenInput);
-
-							var chatInput = document.createElement('input');
-							chatInput.type = 'hidden';
-							chatInput.name = 'telegram_chat_id';
-							chatInput.id = 'rg-test-chat';
-							chatInput.value = chatVal;
-							mainForm.appendChild(chatInput);
-
-						} else if (action === 'test_email') {
-							var emailVal = document.getElementById('admin_email').value;
-
-							if (!emailVal) {
-								alert('<?php echo esc_js( __( 'Mohon isi alamat email terlebih dahulu untuk uji coba!', 'wp-root-guard' ) ); ?>');
-								return;
-							}
-
-							var emailInput = document.createElement('input');
-							emailInput.type = 'hidden';
-							emailInput.name = 'admin_email';
-							emailInput.id = 'rg-test-email';
-							emailInput.value = emailVal;
-							mainForm.appendChild(emailInput);
-						}
-
-						actionField.value = action;
-						mainForm.submit();
-					}
-				</script>
-
 			<?php endif; ?>
 
 		</div>
-
-		<!-- Script Penanganan Aksi Client-side -->
-		<script type="text/javascript">
-			function submitRgAction(action) {
-				document.getElementById('rg-action-field').value = action;
-				document.getElementById('rg-action-form').submit();
-			}
-
-			function trustFolder(folderName) {
-				document.getElementById('rg-action-field').value = 'trust_folder';
-				document.getElementById('rg-folder-field').value = folderName;
-				document.getElementById('rg-action-form').submit();
-			}
-
-			function untrustFolder(folderName) {
-				document.getElementById('rg-action-field').value = 'untrust_folder';
-				document.getElementById('rg-folder-field').value = folderName;
-				document.getElementById('rg-action-form').submit();
-			}
-
-			function submitFolderAction(action, folderName) {
-				document.getElementById('rg-action-field').value = action;
-				document.getElementById('rg-folder-field').value = folderName;
-				document.getElementById('rg-action-form').submit();
-			}
-		</script>
 		<?php
 	}
 }

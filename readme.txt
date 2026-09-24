@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.1.2
+Stable tag: 3.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,14 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.2.0 =
+* Perbaikan Kritis Apache 2.4 .htaccess Syntax: Membungkus aturan blokir IP penyerang dalam kontainer `<RequireAll>` dan direktif `Require all granted`. Menyelesaikan masalah `negative Require directive has no effect in <RequireAny> directive` dan mencegah situs mengalami HTTP 500 error.
+* False Positive Exclusion pada Folder Uploads: Folder baseline integritas plugin (`wp-content/uploads/wp-root-guard/`) kini otomatis dieksklusikan dari pemindaian berkas PHP sehingga berkas `index.php` ("Silence is golden") tidak lagi terdeteksi sebagai malware.
+* Proteksi Anti-Self-Lockout: IP localhost (`127.0.0.1`, `::1`) dan seluruh IP yang terdaftar di `trusted_proxies` (seperti Docker gateway / IP Developer) dilindungi agar tidak pernah dimasukkan ke daftar blokir `.htaccess`.
+* Automated End-to-End (E2E) Test Suite: Penambahan skrip pengujian otomasi `scripts/test-e2e.sh` yang mencakup 14 skenario pengujian komprehensif.
+* Alat Pengujian Sampel Malware Dummy: Penambahan skrip injeksi `scripts/inject-malware-samples.sh` dan `scripts/cleanup-malware-samples.sh` untuk pengujian visual di WP-Admin Dashboard.
+* Penguatan Uninstall & PSR Autoloading: Pembersihan total opsi database, transients dinamis, sitemeta multisite, serta penguatan autoloader.
 
 = 3.1.2 =
 * Pengaturan Default IP Blocker: Mengubah opsi default `enable_ip_blocker` (Blocker Akses Webshell & IP Penyerang) menjadi **NONAKTIF (OFF)** secara bawaan. Pengguna dapat mengaktifkan atau menonaktifkannya kapan saja secara manual melalui tab menu **Root Guard -> Pengaturan**.

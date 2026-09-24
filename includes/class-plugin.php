@@ -1,13 +1,19 @@
 <?php
 /**
- * Mengoordinasikan seluruh fungsionalitas dan hook plugin.
+ * Orkestrator utama plugin WP Root Guard.
+ *
+ * Berkas ini berisi class Plugin yang bertanggung jawab untuk:
+ * 1. Menginisialisasi komponen utama (Cron, Blocker, Updater).
+ * 2. Mendaftarkan hook lifecycle plugin.
+ * 3. Memuat textdomain untuk i18n.
+ * 4. Menginisialisasi komponen admin jika berada di area admin.
  *
  * @package WPRootGuard
+ * @since   1.0.0
  */
 
 namespace WPRootGuard;
 
-// Mencegah akses langsung.
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -17,55 +23,48 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * Kelas utama yang mendaftarkan semua action, filter, dan memuat
  * class-class pembantu untuk admin, cron, dan widget.
+ *
+ * @package WPRootGuard
+ * @since   1.0.0
  */
 class Plugin {
 
-	/**
-	 * Instansi Cron Manager.
-	 *
-	 * @var Cron
-	 */
+	/** @var Cron|null */
 	private $cron;
 
-	/**
-	 * Instansi Admin Manager.
-	 *
-	 * @var Admin\Admin
-	 */
+	/** @var Admin\Admin|null */
 	private $admin;
 
-	/**
-	 * Instansi Dashboard Widget Manager.
-	 *
-	 * @var Admin\Dashboard
-	 */
+	/** @var Admin\Dashboard|null */
 	private $dashboard;
 
-	/**
-	 * Instansi Blocker IP Penyerang.
-	 *
-	 * @var Blocker
-	 */
+	/** @var Blocker|null */
 	private $blocker;
 
-	/**
-	 * Instansi GitHub Updater.
-	 *
-	 * @var Updater
-	 */
+	/** @var Updater|null */
 	private $updater;
 
 	/**
-	 * Konstruktor. Menginisialisasi komponen utama.
+	 * Konstruktor. Menginisialisasi komponen utama dengan class_exists guard.
 	 */
 	public function __construct() {
-		$this->cron    = new Cron();
-		$this->blocker = new Blocker();
-		$this->updater = new Updater( WP_ROOT_GUARD_FILE );
+		if ( class_exists( __NAMESPACE__ . '\\Cron' ) ) {
+			$this->cron = new Cron();
+		}
+		if ( class_exists( __NAMESPACE__ . '\\Blocker' ) ) {
+			$this->blocker = new Blocker();
+		}
+		if ( class_exists( __NAMESPACE__ . '\\Updater' ) ) {
+			$this->updater = new Updater( WP_ROOT_GUARD_FILE );
+		}
 
 		if ( is_admin() ) {
-			$this->admin     = new Admin\Admin();
-			$this->dashboard = new Admin\Dashboard();
+			if ( class_exists( __NAMESPACE__ . '\\Admin\\Admin' ) ) {
+				$this->admin = new Admin\Admin();
+			}
+			if ( class_exists( __NAMESPACE__ . '\\Admin\\Dashboard' ) ) {
+				$this->dashboard = new Admin\Dashboard();
+			}
 		}
 	}
 
@@ -73,33 +72,40 @@ class Plugin {
 	 * Menjalankan plugin dengan mendaftarkan semua hooks ke WordPress.
 	 */
 	public function run() {
-		// Pemuatan translasi.
-		add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
+		add_action( 'init', array( $this, 'load_textdomain' ) );
 
-		// Inisialisasi IP Blocker.
-		$this->blocker->init();
+		// Blocker dilewati di cron / WP-CLI untuk mencegah self-block.
+		if ( $this->blocker instanceof Blocker
+			&& ! wp_doing_cron()
+			&& ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			$this->blocker->init();
+		}
 
-		// Inisialisasi GitHub Updater.
-		$this->updater->init();
+		// Updater hanya relevan di admin.
+		if ( is_admin() && $this->updater instanceof Updater ) {
+			$this->updater->init();
+		}
 
-		// Inisialisasi Cron.
-		$this->cron->init();
+		if ( $this->cron instanceof Cron ) {
+			$this->cron->init();
+		}
 
-		// Inisialisasi Admin jika berada di area Dashboard Admin.
-		if ( is_admin() ) {
+		if ( is_admin() && isset( $this->admin, $this->dashboard ) ) {
 			$this->admin->init();
 			$this->dashboard->init();
 		}
 	}
 
 	/**
-	 * Memuat berkas terjemahan untuk lokalisasi (Translation Ready).
+	 * Memuat berkas terjemahan untuk lokalisasi.
+	 *
+	 * Path: wp-content/plugins/wp-root-guard/languages/
 	 */
 	public function load_textdomain() {
 		load_plugin_textdomain(
 			'wp-root-guard',
 			false,
-			dirname( dirname( plugin_basename( WP_ROOT_GUARD_FILE ) ) ) . '/languages/'
+			dirname( plugin_basename( WP_ROOT_GUARD_FILE ) ) . '/languages/'
 		);
 	}
 }

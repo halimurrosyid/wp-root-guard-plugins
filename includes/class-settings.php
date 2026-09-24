@@ -1,8 +1,13 @@
 <?php
 /**
- * Mengelola pengaturan plugin dan whitelist.
+ * Pengelolaan konfigurasi plugin dan whitelist untuk WP Root Guard.
+ *
+ * Berkas ini berisi class Settings yang menangani konfigurasi plugin,
+ * penyimpanan opsi di database, pengelolaan daftar putih (whitelist),
+ * serta validasi pengaturan keamanan termasuk trusted proxies.
  *
  * @package WPRootGuard
+ * @since   1.0.0
  */
 
 namespace WPRootGuard;
@@ -15,7 +20,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Class Settings
  *
- * Menangani pengambilan dan penyimpanan data whitelist serta konfigurasi plugin.
+ * Menangani pengambilan, penyimpanan, dan validasi data whitelist
+ * serta konfigurasi plugin WP Root Guard.
+ *
+ * @package WPRootGuard
+ * @since   1.0.0
  */
 class Settings {
 
@@ -136,32 +145,63 @@ class Settings {
 	}
 
 	/**
+	 * Memvalidasi dan membersihkan daftar IP trusted proxies.
+	 *
+	 * Memisahkan input berdasarkan baris baru atau koma, membuang spasi kosong,
+	 * dan memvalidasi setiap IP dengan FILTER_VALIDATE_IP.
+	 *
+	 * @param mixed $proxies Daftar IP berupa array atau string.
+	 * @return array Array berisi alamat IP yang valid dan unik.
+	 */
+	public static function sanitize_trusted_proxies( $proxies ) {
+		if ( is_string( $proxies ) ) {
+			$proxies = preg_split( '/[\r\n,]+/', $proxies );
+		}
+
+		if ( ! is_array( $proxies ) ) {
+			return array();
+		}
+
+		$valid_proxies = array();
+		foreach ( $proxies as $item ) {
+			if ( is_string( $item ) ) {
+				$sub_items = preg_split( '/[\r\n,]+/', $item );
+				foreach ( $sub_items as $ip ) {
+					$ip = trim( $ip );
+					if ( '' !== $ip && filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+						$valid_proxies[] = $ip;
+					}
+				}
+			}
+		}
+
+		return array_values( array_unique( $valid_proxies ) );
+	}
+
+	/**
 	 * Mendapatkan seluruh pengaturan konfigurasi plugin dengan nilai bawaan.
 	 *
 	 * @return array Asosiatif array berisi pengaturan.
 	 */
 	public static function get_settings() {
 		$defaults = array(
-			'scan_interval'                => 'every_5_minutes',
-			'enable_uploads_php_scan'      => true,
-			'enable_ip_blocker'            => false,
-			'enable_auto_quarantine'       => false,
+			'scan_interval'                 => 'every_5_minutes',
+			'enable_uploads_php_scan'       => true,
+			'enable_ip_blocker'             => false,
+			'enable_auto_quarantine'        => false,
 			'enable_email_notifications'    => false,
-			'admin_email'                  => get_option( 'admin_email' ),
-			'enable_telegram_notifications' => true,
-			'telegram_bot_token'           => '7604586811:AAFQqlpOBOu1OMNQ3DOBojHjUSaAf8JMArw',
-			'telegram_chat_id'             => '-5468955367',
+			'admin_email'                   => get_option( 'admin_email' ),
+			'enable_telegram_notifications' => false,
+			'telegram_bot_token'            => '',
+			'telegram_chat_id'              => '',
+			'trusted_proxies'               => array(),
 		);
 
 		$settings = get_option( 'wp_root_guard_settings', array() );
 		$merged   = array_merge( $defaults, is_array( $settings ) ? $settings : array() );
 
-		if ( empty( $merged['telegram_bot_token'] ) ) {
-			$merged['telegram_bot_token'] = '7604586811:AAFQqlpOBOu1OMNQ3DOBojHjUSaAf8JMArw';
-		}
-		if ( empty( $merged['telegram_chat_id'] ) ) {
-			$merged['telegram_chat_id'] = '-5468955367';
-		}
+		// Validasi trusted_proxies selalu berupa array IP yang valid.
+		$merged['trusted_proxies'] = isset( $merged['trusted_proxies'] ) ? self::sanitize_trusted_proxies( $merged['trusted_proxies'] ) : array();
 
 		return $merged;
 	}
@@ -173,11 +213,15 @@ class Settings {
 	 * @return bool True jika berhasil diperbarui.
 	 */
 	public static function update_settings( $new_settings ) {
+		if ( ! is_array( $new_settings ) ) {
+			return false;
+		}
+
 		$settings = self::get_settings();
 
 		if ( isset( $new_settings['scan_interval'] ) ) {
-			$old_interval = isset( $settings['scan_interval'] ) ? $settings['scan_interval'] : '';
-			$new_interval = sanitize_text_field( $new_settings['scan_interval'] );
+			$old_interval    = isset( $settings['scan_interval'] ) ? $settings['scan_interval'] : '';
+			$new_interval    = sanitize_text_field( $new_settings['scan_interval'] );
 			$valid_intervals = array( 'every_5_minutes', 'every_15_minutes', 'every_30_minutes', 'hourly', 'twicedaily', 'daily' );
 			if ( in_array( $new_interval, $valid_intervals, true ) ) {
 				$settings['scan_interval'] = $new_interval;
@@ -187,25 +231,52 @@ class Settings {
 			}
 		}
 
-		$settings['enable_uploads_php_scan']    = isset( $new_settings['enable_uploads_php_scan'] ) ? (bool) $new_settings['enable_uploads_php_scan'] : false;
-		$settings['enable_ip_blocker']          = isset( $new_settings['enable_ip_blocker'] ) ? (bool) $new_settings['enable_ip_blocker'] : false;
-		$settings['enable_auto_quarantine']     = isset( $new_settings['enable_auto_quarantine'] ) ? (bool) $new_settings['enable_auto_quarantine'] : false;
-		$settings['enable_email_notifications'] = isset( $new_settings['enable_email_notifications'] ) ? (bool) $new_settings['enable_email_notifications'] : false;
-
-		if ( isset( $new_settings['admin_email'] ) ) {
-			$settings['admin_email'] = sanitize_email( $new_settings['admin_email'] );
+		if ( array_key_exists( 'enable_uploads_php_scan', $new_settings ) ) {
+			$settings['enable_uploads_php_scan'] = filter_var( $new_settings['enable_uploads_php_scan'], FILTER_VALIDATE_BOOLEAN );
 		}
 
-		$settings['enable_telegram_notifications'] = isset( $new_settings['enable_telegram_notifications'] ) ? (bool) $new_settings['enable_telegram_notifications'] : false;
+		if ( array_key_exists( 'enable_ip_blocker', $new_settings ) ) {
+			$settings['enable_ip_blocker'] = filter_var( $new_settings['enable_ip_blocker'], FILTER_VALIDATE_BOOLEAN );
+		}
+
+		if ( array_key_exists( 'enable_auto_quarantine', $new_settings ) ) {
+			$settings['enable_auto_quarantine'] = filter_var( $new_settings['enable_auto_quarantine'], FILTER_VALIDATE_BOOLEAN );
+		}
+
+		if ( array_key_exists( 'enable_email_notifications', $new_settings ) ) {
+			$settings['enable_email_notifications'] = filter_var( $new_settings['enable_email_notifications'], FILTER_VALIDATE_BOOLEAN );
+		}
+
+		if ( isset( $new_settings['admin_email'] ) ) {
+			$settings['admin_email'] = sanitize_email( trim( (string) $new_settings['admin_email'] ) );
+		}
+
+		if ( array_key_exists( 'enable_telegram_notifications', $new_settings ) ) {
+			$settings['enable_telegram_notifications'] = filter_var( $new_settings['enable_telegram_notifications'], FILTER_VALIDATE_BOOLEAN );
+		}
 
 		if ( isset( $new_settings['telegram_bot_token'] ) ) {
-			$settings['telegram_bot_token'] = sanitize_text_field( trim( $new_settings['telegram_bot_token'] ) );
+			$settings['telegram_bot_token'] = sanitize_text_field( trim( (string) $new_settings['telegram_bot_token'] ) );
 		}
 
 		if ( isset( $new_settings['telegram_chat_id'] ) ) {
-			$settings['telegram_chat_id'] = sanitize_text_field( trim( $new_settings['telegram_chat_id'] ) );
+			$settings['telegram_chat_id'] = sanitize_text_field( trim( (string) $new_settings['telegram_chat_id'] ) );
+		}
+
+		if ( isset( $new_settings['trusted_proxies'] ) ) {
+			$settings['trusted_proxies'] = self::sanitize_trusted_proxies( $new_settings['trusted_proxies'] );
 		}
 
 		return update_option( 'wp_root_guard_settings', $settings );
+	}
+
+	/**
+	 * Alias untuk update_settings().
+	 *
+	 * @param array $new_settings Pengaturan baru yang akan disimpan.
+	 * @return bool True jika berhasil diperbarui.
+	 */
+	public static function save_settings( $new_settings ) {
+		return self::update_settings( $new_settings );
 	}
 }

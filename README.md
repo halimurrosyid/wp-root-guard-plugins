@@ -19,6 +19,14 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.2.0 (24 September 2026)
+- **Perbaikan Kritis Apache 2.4 `.htaccess` Syntax (Error 500 Fix)**: Menyelesaikan *alert error* `negative Require directive has no effect in <RequireAny> directive` dengan membungkus aturan pemblokiran IP dalam kontainer `<RequireAll>` dan direktif `Require all granted`. Mencegah situs mengalami *500 Internal Server Error* saat terjadi pemblokiran IP.
+- **Pencegahan False Positive Pemindaian Uploads**: Folder penyimpanan baseline integritas plugin (`wp-content/uploads/wp-root-guard/`) kini otomatis dieksklusikan dari pemindaian berkas PHP, sehingga berkas proteksi `index.php` ("Silence is golden") tidak lagi terdeteksi keliru sebagai malware (*0 false positive*).
+- **Proteksi Anti-Self-Lockout**: Menambahkan verifikasi ketat pada `Blocker::block_ip()` agar IP localhost (`127.0.0.1`, `::1`) dan seluruh IP yang terdaftar di `trusted_proxies` (seperti Docker gateway / IP Developer) tidak pernah dimasukkan ke daftar blokir `.htaccess` saat melakukan uji penetrasi / simulasi serangan.
+- **Automated End-to-End (E2E) Test Suite**: Menambahkan skrip pengujian otomatis komprehensif (`scripts/test-e2e.sh`) yang menguji 14 skenario dari ujung ke ujung: pembuatan baseline HMAC, uploads scan, webshell & dangerous functions signature scanner (`eval`, `base64_decode`, `shell_exec`, `system`, `c99shell`), rogue folders, core diff tampering, real-time HTTP 403 interceptor, dan stabilitas konfigurasi Apache.
+- **Alat Pengujian Sampel Malware Dummy**: Menyediakan skrip injeksi sampel dummy (`scripts/inject-malware-samples.sh`) dan pembersihan otomatis (`scripts/cleanup-malware-samples.sh`) untuk simulasi deteksi visual dan pengujian tombol aksi di WP-Admin Dashboard.
+- **Penyempurnaan Uninstall & PSR Autoloading**: Peningkatan pembersihan menyeluruh pada `uninstall.php` (menghapus seluruh options, transient tunggal dan dinamis, sitemeta multisite, serta direktori karantina) dan penguatan autoloader `spl_autoload_register`.
+
 ### v3.1.2 (29 Juli 2026)
 - **IP Blocker Disabled by Default**: Fitur pemblokiran IP dan interseptor request HTTP kini dikonfigurasi **Nonaktif (OFF)** secara default. Dapat diaktifkan/dinonaktifkan manual di menu Pengaturan.
 
