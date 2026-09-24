@@ -94,6 +94,28 @@ class Scanner {
 	 * @return array Hasil pemindaian berupa status proteksi dan daftar ancaman terdeteksi.
 	 */
 	public static function perform_scan() {
+		// 0. Maintenance Guard: Tunda pemindaian jika WordPress core update sedang berlangsung.
+		if ( self::is_core_update_in_progress() ) {
+			Logger::log(
+				esc_html__( 'Pemindaian integritas ditunda: WordPress sedang dalam proses pembaruan (maintenance mode).', 'wp-root-guard' ),
+				'.maintenance',
+				esc_html__( 'Info', 'wp-root-guard' )
+			);
+			return array(
+				'last_scan'       => current_time( 'mysql' ),
+				'status'          => 'safe',
+				'unknown_count'   => 0,
+				'unknown_folders' => array(),
+			);
+		}
+
+		// Pastikan baseline tersinkronisasi jika versi WordPress baru saja berubah.
+		global $wp_version;
+		$baseline_raw = Baseline::read_baseline();
+		if ( ! empty( $baseline_raw ) && isset( $baseline_raw['wp_version'] ) && ! empty( $wp_version ) && (string) $wp_version !== (string) $baseline_raw['wp_version'] ) {
+			Baseline::handle_core_update( (string) $wp_version, 'scanner_runtime_detection' );
+		}
+
 		$detection_time = self::get_wib_time();
 
 		// 1. Dapatkan folder & berkas saat ini di root.
@@ -465,28 +487,93 @@ class Scanner {
 
 	/**
 	 * Mengambil daftar checksums resmi dari WordPress.org API.
+	/**
+	 * Memeriksa apakah WordPress sedang dalam proses pembaruan core / maintenance mode.
+	 *
+	 * @return bool True jika update sedang berjalan, false jika aman.
+	 */
+	public static function is_core_update_in_progress() {
+		if ( function_exists( 'wp_is_maintenance_mode' ) && wp_is_maintenance_mode() ) {
+			return true;
+		}
+
+		$maintenance_file = ABSPATH . '.maintenance';
+		if ( file_exists( $maintenance_file ) ) {
+			$mtime = filemtime( $maintenance_file );
+			if ( false !== $mtime && ( time() - $mtime ) < 600 ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Mendapatkan kunci transient checksums yang terikat pada versi WordPress dan locale.
+	 *
+	 * @param string|null $version Versi WordPress (opsional).
+	 * @param string|null $locale  Locale WordPress (opsional).
+	 * @return string Kunci transient dinamis (maks 64 karakter).
+	 */
+	public static function get_core_checksum_transient_key( $version = null, $locale = null ) {
+		global $wp_version;
+		$v = ! empty( $version ) ? (string) $version : (string) $wp_version;
+		$l = ! empty( $locale ) ? (string) $locale : get_locale();
+		return 'wp_rg_chk_' . substr( md5( $v . '_' . $l ), 0, 20 );
+	}
+
+	/**
+	 * Menghapus cache transient checksums saat core diupdate atau di-refresh manual.
+	 *
+	 * @param string|null $version Versi WordPress spesifik, atau null untuk versi saat ini.
+	 * @return void
+	 */
+	public static function invalidate_core_checksums_cache( $version = null ) {
+		global $wp_version;
+		$v = ! empty( $version ) ? (string) $version : (string) $wp_version;
+		$transient_key = self::get_core_checksum_transient_key( $v );
+		delete_transient( $transient_key );
+		delete_transient( 'wp_root_guard_core_checksums' );
+		if ( is_multisite() ) {
+			delete_site_transient( $transient_key );
+			delete_site_transient( 'wp_root_guard_core_checksums' );
+		}
+		delete_transient( 'wp_rg_chk_fail_' . substr( md5( $v . '_' . get_locale() ), 0, 20 ) );
+	}
+
+	/**
+	 * Mengambil daftar checksums resmi dari WordPress.org API.
+	 * Menggunakan dynamic versioned transient key dan circuit breaker untuk mencegah overhead saat w.org down.
 	 *
 	 * @return array|bool Array checksums resmi (relative_path => expected_md5) atau false jika gagal.
 	 */
 	public static function get_core_checksums() {
 		global $wp_version;
 		$locale        = get_locale();
-		$transient_key = 'wp_root_guard_core_checksums';
+		$transient_key = self::get_core_checksum_transient_key( $wp_version, $locale );
 		$cached        = get_transient( $transient_key );
 
 		if ( is_array( $cached ) ) {
 			return $cached;
 		}
 
+		// Cek circuit breaker transient jika API baru saja gagal dalam 15 menit terakhir
+		$fail_key = 'wp_rg_chk_fail_' . substr( md5( (string) $wp_version . '_' . $locale ), 0, 20 );
+		if ( get_transient( $fail_key ) ) {
+			return false;
+		}
+
 		$url      = "https://api.wordpress.org/core/checksums/1.0/?version={$wp_version}&locale={$locale}";
 		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
 
 		if ( is_wp_error( $response ) ) {
+			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
 			return false;
 		}
 
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( 200 !== $code ) {
+			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
 			return false;
 		}
 
@@ -494,13 +581,63 @@ class Scanner {
 		$data = json_decode( $body, true );
 
 		if ( ! is_array( $data ) || empty( $data['checksums'] ) ) {
+			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
 			return false;
 		}
 
-		// Simpan di cache transient selama 24 jam
+		// Simpan di cache transient selama 24 jam (dinamis & legacy)
 		set_transient( $transient_key, $data['checksums'], DAY_IN_SECONDS );
+		set_transient( 'wp_root_guard_core_checksums', $data['checksums'], DAY_IN_SECONDS );
 
 		return $data['checksums'];
+	}
+
+	/**
+	 * Mengambil konten berkas resmi core dengan dual-source fallback (SVN WordPress.org -> GitHub Official Mirror).
+	 *
+	 * @param string $relative_path Path relatif berkas core.
+	 * @return array{success: bool, content: string, source: string, error: string}
+	 */
+	public static function fetch_remote_core_file( $relative_path ) {
+		global $wp_version;
+		$clean_version = preg_replace( '/-.*$/', '', (string) $wp_version );
+
+		$sources = array(
+			'svn'          => "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}",
+			'svn_clean'    => "https://core.svn.wordpress.org/tags/{$clean_version}/{$relative_path}",
+			'github'       => "https://raw.githubusercontent.com/WordPress/WordPress/{$wp_version}/{$relative_path}",
+			'github_clean' => "https://raw.githubusercontent.com/WordPress/WordPress/{$clean_version}/{$relative_path}",
+		);
+
+		$sources    = array_unique( $sources );
+		$last_error = '';
+
+		foreach ( $sources as $type => $url ) {
+			$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
+			if ( is_wp_error( $response ) ) {
+				$last_error = $response->get_error_message();
+				continue;
+			}
+
+			if ( 200 === wp_remote_retrieve_response_code( $response ) ) {
+				$body = wp_remote_retrieve_body( $response );
+				if ( ! empty( $body ) ) {
+					return array(
+						'success' => true,
+						'content' => $body,
+						'source'  => $type,
+						'error'   => '',
+					);
+				}
+			}
+		}
+
+		return array(
+			'success' => false,
+			'content' => '',
+			'source'  => '',
+			'error'   => ! empty( $last_error ) ? $last_error : esc_html__( 'Gagal mengunduh berkas core dari SVN maupun GitHub Mirror resmi.', 'wp-root-guard' ),
+		);
 	}
 
 	/**
@@ -574,40 +711,29 @@ class Scanner {
 			wp_mkdir_p( $dir );
 		}
 
-		$url      = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
-		$response = wp_remote_get( $url, array( 'timeout' => 20 ) );
-
-		if ( is_wp_error( $response ) ) {
-			$err_msg = $response->get_error_message();
+		$remote = self::fetch_remote_core_file( $relative_path );
+		if ( ! $remote['success'] ) {
 			Logger::log(
-				esc_html__( 'Gagal mengunduh berkas core dari SVN', 'wp-root-guard' ),
-				$relative_path . ' (' . $err_msg . ')',
+				esc_html__( 'Gagal mengunduh berkas core resmi', 'wp-root-guard' ),
+				$relative_path . ' (' . $remote['error'] . ')',
 				esc_html__( 'Failed', 'wp-root-guard' )
 			);
 			return array(
 				'success' => false,
-				'message' => sprintf( /* translators: %s: error message */ esc_html__( 'Gagal mengunduh dari SVN WordPress.org: %s. Periksa koneksi internet / outbound HTTP server Anda.', 'wp-root-guard' ), $err_msg ),
+				'message' => sprintf(
+					/* translators: 1: error message, 2: WP version */
+					esc_html__( 'Gagal mengunduh berkas core resmi untuk WordPress v%2$s: %1$s. Periksa koneksi internet / outbound HTTP server Anda.', 'wp-root-guard' ),
+					$remote['error'],
+					$wp_version
+				),
 			);
 		}
 
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code ) {
-			Logger::log(
-				esc_html__( 'HTTP Error dari SVN WordPress.org', 'wp-root-guard' ),
-				$relative_path . ' (HTTP ' . $code . ')',
-				esc_html__( 'Failed', 'wp-root-guard' )
-			);
-			return array(
-				'success' => false,
-				'message' => sprintf( /* translators: %1$d: HTTP code, %2$s: WP version */ esc_html__( 'Server SVN WordPress.org mengembalikan HTTP %1$d (Berkas versi WordPress %2$s tidak ditemukan di repository resmi).', 'wp-root-guard' ), $code, $wp_version ),
-			);
-		}
-
-		$content = wp_remote_retrieve_body( $response );
+		$content = $remote['content'];
 		if ( empty( $content ) ) {
 			return array(
 				'success' => false,
-				'message' => esc_html__( 'Konten berkas asli dari SVN WordPress.org diterima dalam keadaan kosong.', 'wp-root-guard' ),
+				'message' => esc_html__( 'Konten berkas asli dari repositori resmi diterima dalam keadaan kosong.', 'wp-root-guard' ),
 			);
 		}
 
@@ -658,15 +784,18 @@ class Scanner {
 			return array( 'error' => esc_html__( 'Berkas lokal tidak ditemukan.', 'wp-root-guard' ) );
 		}
 
-		global $wp_version;
-		$url = "https://core.svn.wordpress.org/tags/{$wp_version}/{$relative_path}";
-		
-		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
-		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
-			return array( 'error' => esc_html__( 'Gagal mengunduh versi asli berkas dari WordPress.org.', 'wp-root-guard' ) );
+		$remote = self::fetch_remote_core_file( $relative_path );
+		if ( ! $remote['success'] ) {
+			return array(
+				'error' => sprintf(
+					/* translators: %s: error reason */
+					esc_html__( 'Gagal mengunduh versi asli berkas dari repositori resmi: %s', 'wp-root-guard' ),
+					$remote['error']
+				),
+			);
 		}
 
-		$original_content = wp_remote_retrieve_body( $response );
+		$original_content = $remote['content'];
 		$local_content    = @file_get_contents( $local_path );
 
 		$original_lines = explode( "\n", str_replace( "\r", "", $original_content ) );

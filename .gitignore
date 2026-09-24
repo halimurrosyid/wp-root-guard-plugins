@@ -81,6 +81,10 @@ coverage/
 *.coverage
 .phpcs-cache
 .php-cs-fixer.cache
+scripts/*malware*
+scripts/inject*
+scripts/cleanup*
+scripts/test*
 
 # ------------------------------------------------------------------------------
 # 7. Operating System Files

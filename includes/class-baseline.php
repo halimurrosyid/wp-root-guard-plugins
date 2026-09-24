@@ -41,6 +41,18 @@ class Baseline {
 	const BASELINE_DIRNAME = 'wp-root-guard';
 
 	/**
+	 * Nama berkas lock eksklusif untuk mencegah race condition.
+	 */
+	const LOCK_FILENAME = '.baseline.lock';
+
+	/**
+	 * Cache in-memory untuk baseline dalam satu request PHP.
+	 *
+	 * @var array|null
+	 */
+	private static $memory_cache = null;
+
+	/**
 	 * Context salt untuk signing HMAC berkas baseline.
 	 */
 	const HMAC_CONTEXT = 'wp_root_guard_baseline';
@@ -103,51 +115,95 @@ class Baseline {
 	}
 
 	/**
-	 * Membuat baseline dari folder dan berkas root saat ini.
+	 * Mendapatkan path berkas lock eksklusif untuk operasi baseline.
 	 *
-	 * Membaca seluruh direktori dan berkas level pertama di ABSPATH,
-	 * menambahkan HMAC signature untuk integritas data, dan menyimpannya ke berkas baseline.json
-	 * dengan exclusive file lock (LOCK_EX).
+	 * @return string Path berkas lock.
+	 */
+	public static function get_lock_file() {
+		$dir = self::get_baseline_dir();
+		return ! empty( $dir ) ? $dir . '/' . self::LOCK_FILENAME : '';
+	}
+
+	/**
+	 * Menghapus cache transient checksums resmi WordPress.org.
+	 * Kompatibel dengan Single Site dan Multisite Network.
+	 *
+	 * @return void
+	 */
+	public static function invalidate_checksums_cache() {
+		delete_transient( 'wp_root_guard_core_checksums' );
+		if ( is_multisite() ) {
+			delete_site_transient( 'wp_root_guard_core_checksums' );
+		}
+		if ( class_exists( '\WPRootGuard\Scanner' ) && method_exists( '\WPRootGuard\Scanner', 'invalidate_core_checksums_cache' ) ) {
+			\WPRootGuard\Scanner::invalidate_core_checksums_cache();
+		}
+	}
+
+	/**
+	 * Mendapatkan versi WordPress saat ini secara andal.
+	 *
+	 * @return string Versi WP string.
+	 */
+	public static function get_current_wp_version() {
+		global $wp_version;
+		if ( ! empty( $wp_version ) ) {
+			return (string) $wp_version;
+		}
+		if ( function_exists( 'get_bloginfo' ) ) {
+			return (string) get_bloginfo( 'version' );
+		}
+		return '';
+	}
+
+	/**
+	 * Reset/invalidation cache in-memory baseline.
+	 */
+	public static function clear_memory_cache() {
+		self::$memory_cache = null;
+	}
+
+	/**
+	 * Handler publik saat event core update dipicu dari hook listener.
+	 *
+	 * @param string $new_version Versi WordPress target baru.
+	 * @param string $source      Sumber pemicu (contoh: hook, cli).
+	 * @return bool True jika baseline berhasil disinkronkan.
+	 */
+	public static function handle_core_update( $new_version = '', $source = 'hook' ) {
+		if ( empty( $new_version ) ) {
+			$new_version = self::get_current_wp_version();
+		}
+
+		$result = self::sync_baseline_version( $new_version, $source );
+		return is_array( $result );
+	}
+
+	/**
+	 * Membuat baseline dari folder dan berkas root saat ini.
 	 *
 	 * @return bool True jika baseline berhasil ditulis, false jika gagal.
 	 */
 	public static function create_baseline() {
-		$file_path = self::get_baseline_file();
-		if ( empty( $file_path ) ) {
-			return false;
-		}
-
-		global $wp_version;
-
-		$folders = self::scan_root_folders();
-		$files   = self::scan_root_files();
-
-		$data = array(
-			'created_at' => function_exists( 'current_time' ) ? current_time( 'mysql' ) : gmdate( 'Y-m-d H:i:s' ),
-			'wp_version' => ! empty( $wp_version ) ? (string) $wp_version : ( function_exists( 'get_bloginfo' ) ? (string) get_bloginfo( 'version' ) : '' ),
-			'folders'    => $folders,
-			'files'      => $files,
-		);
-
-		$data['hmac'] = self::sign( $data );
-
-		$json_data = function_exists( 'wp_json_encode' )
-			? wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES )
-			: json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
-
-		return false !== @file_put_contents( $file_path, $json_data, LOCK_EX );
+		self::clear_memory_cache();
+		$current_version = self::get_current_wp_version();
+		$synced          = self::sync_baseline_version( $current_version, 'manual_create' );
+		return is_array( $synced );
 	}
 
 	/**
 	 * Membaca dan memverifikasi integritas berkas baseline.json.
+	 * Dilengkapi deteksi fallback versi WordPress core.
 	 *
-	 * OWASP A08:2021 — Software & Data Integrity Failures.
-	 * Membaca berkas dan memverifikasi HMAC signature via verify().
-	 * Jika verifikasi gagal (file dimodifikasi/rusak), catat ke Logger sebagai Tampered dan kembalikan array kosong.
-	 *
-	 * @return array Data snapshot baseline jika valid, atau array kosong jika tidak ditemukan / tidak valid.
+	 * @param bool $skip_fallback Set true untuk menonaktifkan pengecekan fallback (mencegah loop rekursif).
+	 * @return array Data snapshot baseline jika valid, atau array kosong jika tidak valid/tampered.
 	 */
-	public static function read_baseline() {
+	public static function read_baseline( $skip_fallback = false ) {
+		// Gunakan cache in-memory jika tersedia
+		if ( null !== self::$memory_cache && ! $skip_fallback ) {
+			return self::$memory_cache;
+		}
+
 		$file_path = self::get_baseline_file();
 		if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
 			return array();
@@ -159,6 +215,8 @@ class Baseline {
 		}
 
 		$data = json_decode( $content, true );
+
+		// 1. Verifikasi integritas kriptografis HMAC terlebih dahulu (OWASP A08:2021).
 		if ( ! is_array( $data ) || ! self::verify( $data ) ) {
 			Logger::log(
 				__( 'Integritas berkas baseline gagal diverifikasi: berkas telah dimodifikasi atau HMAC tidak valid', 'wp-root-guard' ),
@@ -168,7 +226,135 @@ class Baseline {
 			return array();
 		}
 
+		// 2. Fallback Version Detection: Cek perbedaan versi WordPress core.
+		if ( ! $skip_fallback ) {
+			$current_version = self::get_current_wp_version();
+			$stored_version  = isset( $data['wp_version'] ) ? (string) $data['wp_version'] : '';
+
+			if ( ! empty( $current_version ) && ! empty( $stored_version ) && $current_version !== $stored_version ) {
+				$synced_data = self::sync_baseline_version( $current_version, 'fallback_version_detection', $stored_version );
+				if ( is_array( $synced_data ) && ! empty( $synced_data ) ) {
+					self::$memory_cache = $synced_data;
+					return $synced_data;
+				}
+			}
+		}
+
+		self::$memory_cache = $data;
 		return $data;
+	}
+
+	/**
+	 * Melakukan sinkronisasi baseline saat versi WordPress core berubah.
+	 * Menggunakan Double-Checked Locking dengan file lock eksklusif untuk mencegah race condition.
+	 *
+	 * @param string $new_version Versi WordPress target.
+	 * @param string $source      Sumber pemicu sinkronisasi ('hook' atau 'fallback_version_detection').
+	 * @param string $old_version Versi sebelumnya (opsional).
+	 * @return array|false Data snapshot baseline baru, atau false jika gagal.
+	 */
+	public static function sync_baseline_version( $new_version, $source = 'hook', $old_version = '' ) {
+		$lock_file = self::get_lock_file();
+		if ( empty( $lock_file ) ) {
+			return false;
+		}
+
+		$lock_fp = @fopen( $lock_file, 'c+' );
+		if ( ! $lock_fp ) {
+			return false;
+		}
+
+		// Dapatkan exclusive lock (blocking dengan aman)
+		if ( ! @flock( $lock_fp, LOCK_EX ) ) {
+			@fclose( $lock_fp );
+			return false;
+		}
+
+		try {
+			// DOUBLE-CHECK PATTERN: Baca kembali file dari disk setelah lock berhasil diperoleh.
+			// Mencegah duplicate rebuild jika proses concurrent lain baru saja menyelesaikannya.
+			$fresh_data = self::read_baseline( true ); // true = skip_fallback untuk mencegah loop
+
+			if ( ! empty( $fresh_data )
+				&& isset( $fresh_data['wp_version'] )
+				&& $fresh_data['wp_version'] === $new_version
+				&& 'manual_create' !== $source ) {
+				
+				// Baseline sudah diperbarui oleh proses lain! Invalidate cache & return.
+				self::$memory_cache = $fresh_data;
+				@flock( $lock_fp, LOCK_UN );
+				@fclose( $lock_fp );
+				return $fresh_data;
+			}
+
+			if ( empty( $old_version ) && isset( $fresh_data['wp_version'] ) ) {
+				$old_version = (string) $fresh_data['wp_version'];
+			}
+
+			// Jalankan Rebuild Snapshot Root
+			$folders = self::scan_root_folders();
+			$files   = self::scan_root_files();
+
+			$new_data = array(
+				'created_at' => function_exists( 'current_time' ) ? current_time( 'mysql' ) : gmdate( 'Y-m-d H:i:s' ),
+				'wp_version' => $new_version,
+				'folders'    => $folders,
+				'files'      => $files,
+			);
+
+			// Tanda tangani dengan HMAC-SHA256
+			$new_data['hmac'] = self::sign( $new_data );
+
+			$json_data = function_exists( 'wp_json_encode' )
+				? wp_json_encode( $new_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES )
+				: json_encode( $new_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+
+			$target_file = self::get_baseline_file();
+			$written     = @file_put_contents( $target_file, $json_data, LOCK_EX );
+
+			if ( false === $written ) {
+				Logger::log(
+					sprintf(
+						/* translators: %s: versi wordpress */
+						esc_html__( 'Gagal menulis berkas baseline baru setelah core update ke versi %s', 'wp-root-guard' ),
+						$new_version
+					),
+					self::BASELINE_FILENAME,
+					'Warning'
+				);
+				@flock( $lock_fp, LOCK_UN );
+				@fclose( $lock_fp );
+				return false;
+			}
+
+			// Invalidate transient checksums resmi
+			self::invalidate_checksums_cache();
+
+			// Invalidate & perbarui in-memory cache
+			self::$memory_cache = $new_data;
+
+			// Audit logging (jika bukan manual_create awal)
+			if ( 'manual_create' !== $source ) {
+				$log_message = sprintf(
+					/* translators: 1: versi lama, 2: versi baru, 3: pemicu */
+					esc_html__( 'WordPress core diperbarui dari v%1$s ke v%2$s (pemicu: %3$s). Baseline dan cache checksums otomatis diperbarui.', 'wp-root-guard' ),
+					! empty( $old_version ) ? $old_version : esc_html__( 'tidak diketahui', 'wp-root-guard' ),
+					$new_version,
+					$source
+				);
+				Logger::log( $log_message, 'WordPress Core', 'Safe' );
+			}
+
+			@flock( $lock_fp, LOCK_UN );
+			@fclose( $lock_fp );
+
+			return $new_data;
+
+		} catch ( \Exception $e ) {
+			@flock( $lock_fp, LOCK_UN );
+			@fclose( $lock_fp );
+			return false;
+		}
 	}
 
 	/**
@@ -316,6 +502,7 @@ class Baseline {
 	 * @return bool True jika berkas berhasil dihapus atau berkas memang tidak ada, false jika gagal menghapus.
 	 */
 	public static function delete_baseline() {
+		self::clear_memory_cache();
 		$file_path = self::get_baseline_file();
 		if ( ! empty( $file_path ) && file_exists( $file_path ) ) {
 			return @unlink( $file_path );
@@ -364,7 +551,7 @@ class Baseline {
 	 * @param array $data Data snapshot baseline tanpa field 'hmac'.
 	 * @return string Signature HMAC hex.
 	 */
-	private static function sign( array $data ) {
+	public static function sign( array $data ) {
 		unset( $data['hmac'] );
 		ksort( $data );
 		$payload = function_exists( 'wp_json_encode' ) ? wp_json_encode( $data ) : json_encode( $data );
@@ -380,7 +567,7 @@ class Baseline {
 	 * @param array $data Data snapshot baseline yang memuat field 'hmac'.
 	 * @return bool True jika signature valid dan otentik.
 	 */
-	private static function verify( array $data ) {
+	public static function verify( array $data ) {
 		if ( ! isset( $data['hmac'] ) || ! is_string( $data['hmac'] ) ) {
 			return false;
 		}

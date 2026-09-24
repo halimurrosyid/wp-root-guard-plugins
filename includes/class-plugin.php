@@ -74,6 +74,15 @@ class Plugin {
 	public function run() {
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 
+		// ==========================================
+		// CORE UPDATE HOOK LISTENERS
+		// ==========================================
+		// Hook resmi WordPress saat core berhasil diperbarui (WP-Admin, Auto-update cron, WP-CLI core update).
+		add_action( '_core_updated_successfully', array( $this, 'on_core_updated' ), 10, 1 );
+
+		// Redundansi lapis kedua via Upgrader Process Lifecycle.
+		add_action( 'upgrader_process_complete', array( $this, 'on_upgrader_process_complete' ), 10, 2 );
+
 		// Blocker dilewati di cron / WP-CLI untuk mencegah self-block.
 		if ( $this->blocker instanceof Blocker
 			&& ! wp_doing_cron()
@@ -93,6 +102,35 @@ class Plugin {
 		if ( is_admin() && isset( $this->admin, $this->dashboard ) ) {
 			$this->admin->init();
 			$this->dashboard->init();
+		}
+	}
+
+	/**
+	 * Handler saat WordPress core berhasil di-update via hook resmi _core_updated_successfully.
+	 *
+	 * @param string $new_version Versi baru WordPress yang baru selesai di-install.
+	 */
+	public function on_core_updated( $new_version ) {
+		if ( class_exists( __NAMESPACE__ . '\\Baseline' ) ) {
+			Baseline::handle_core_update( (string) $new_version, 'hook:_core_updated_successfully' );
+		}
+	}
+
+	/**
+	 * Handler pelengkap saat upgrader process selesai dijalankan.
+	 * Memastikan jika tipe proses adalah core update, sinkronisasi baseline dijalankan.
+	 *
+	 * @param mixed $upgrader Instance upgrader.
+	 * @param array $options  Data proses upgrader (type, action, dll).
+	 */
+	public function on_upgrader_process_complete( $upgrader, array $options ) {
+		if ( isset( $options['type'], $options['action'] )
+			&& 'core' === $options['type']
+			&& 'update' === $options['action']
+			&& class_exists( __NAMESPACE__ . '\\Baseline' ) ) {
+			global $wp_version;
+			$version = ! empty( $wp_version ) ? (string) $wp_version : '';
+			Baseline::handle_core_update( $version, 'hook:upgrader_process_complete' );
 		}
 	}
 
