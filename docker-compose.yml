@@ -34,6 +34,9 @@ services:
         condition: service_healthy
     ports:
       - "50080:80"                                # 🔥 Port uncommon (>50000)
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_NAME: wordpress
