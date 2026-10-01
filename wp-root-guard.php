@@ -10,17 +10,17 @@
  *
  * @package           WPRootGuard
  * @since             1.0.0
- * @author            Mujaddid Halimurrosyid
- * @copyright         2026 Mujaddid Halimurrosyid
+ * @author            PuTI Telkom University
+ * @copyright         2026 PuTI Telkom University
  * @license           GPL-2.0-or-later
  *
  * @wordpress-plugin
  * Plugin Name:       WP Root Guard
- * Plugin URI:        https://ajidmujaddid.staff.telkomuniversity.ac.id/
+ * Plugin URI:        https://it.telkomuniversity.ac.id/
  * Description:       Mendeteksi folder asing/mencurigakan yang muncul di root directory WordPress Anda untuk mencegah malware judi slot.
  * Version:           3.2.0
- * Author:            Mujaddid Halimurrosyid
- * Author URI:        https://ajidmujaddid.staff.telkomuniversity.ac.id/
+ * Author:            PuTI Telkom University
+ * Author URI:        https://it.telkomuniversity.ac.id/
  * License:           GPL v2 or later
  * Text Domain:       wp-root-guard
  * Domain Path:       /languages

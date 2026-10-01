@@ -40,6 +40,11 @@ class Cron {
 	const PRUNE_HOOK = 'wp_root_guard_prune_ips';
 
 	/**
+	 * Nama option lock untuk fallback pemindaian berbasis traffic.
+	 */
+	const TRAFFIC_SCAN_LOCK_OPTION = 'wp_root_guard_traffic_scan_lock';
+
+	/**
 	 * Mendaftarkan filter dan action untuk WP-Cron.
 	 *
 	 * @return void
@@ -48,6 +53,9 @@ class Cron {
 		self::register_schedules();
 		add_action( self::SCAN_HOOK, array( $this, 'run_background_scan' ) );
 		add_action( self::PRUNE_HOOK, array( __NAMESPACE__ . '\\Blocker', 'prune_expired_ips' ) );
+		// Fallback dashboard-first: jika WP-Cron loopback tidak tersedia,
+		// request website tetap dapat menjalankan scan yang sudah jatuh tempo.
+		add_action( 'wp_loaded', array( __CLASS__, 'maybe_run_due_scan' ), 999 );
 
 		// Activation hook berjalan sebelum plugins_loaded, sehingga interval kustom
 		// mungkin belum terdaftar ketika schedule pertama dibuat. Pulihkan event
@@ -176,7 +184,105 @@ class Cron {
 			'is_due'            => $event ? (int) $event->timestamp <= $now : false,
 			'configuration_ok'  => (bool) ( $event && $event->schedule === $interval ),
 			'cron_disabled'     => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+			'traffic_fallback'  => true,
 		);
+	}
+
+	/**
+	 * Menjalankan scan yang jatuh tempo dari request WordPress biasa.
+	 *
+	 * WP-Cron bukan daemon. Pada shared hosting atau Docker dengan loopback
+	 * yang gagal, event tetap tersimpan tetapi tidak pernah dieksekusi. Fallback
+	 * ini menjaga proteksi tetap berjalan ketika ada traffic tanpa memanggil
+	 * wp-cron.php secara manual. Lock mencegah dua request menjalankan scan
+	 * secara bersamaan.
+	 *
+	 * @return void
+	 */
+	public static function maybe_run_due_scan() {
+		if ( wp_doing_cron() || wp_doing_ajax() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+			return;
+		}
+
+		$event = wp_get_scheduled_event( self::SCAN_HOOK );
+		if ( ! $event || (int) $event->timestamp > time() ) {
+			return;
+		}
+
+		if ( ! self::acquire_traffic_scan_lock() ) {
+			return;
+		}
+
+		try {
+			$result = class_exists( __NAMESPACE__ . '\\Scanner' ) ? Scanner::perform_scan() : array();
+			$failed = is_array( $result ) && isset( $result['status'] ) && 'failed' === $result['status'];
+			self::advance_scan_event( $event, $failed ? 60 : null );
+		} finally {
+			self::release_traffic_scan_lock();
+		}
+	}
+
+	/**
+	 * Mengambil lock lintas-request dengan option database.
+	 *
+	 * @return bool True jika request ini menjadi pemilik lock.
+	 */
+	private static function acquire_traffic_scan_lock() {
+		$now   = time();
+		$lock  = get_option( self::TRAFFIC_SCAN_LOCK_OPTION, array() );
+		$until = is_array( $lock ) && isset( $lock['until'] ) ? (int) $lock['until'] : 0;
+
+		if ( $until > $now ) {
+			return false;
+		}
+
+		if ( $until > 0 ) {
+			delete_option( self::TRAFFIC_SCAN_LOCK_OPTION );
+		}
+
+		return add_option(
+			self::TRAFFIC_SCAN_LOCK_OPTION,
+			array(
+				'run_id' => wp_generate_uuid4(),
+				'until'  => $now + 900,
+			),
+			'',
+			'no'
+		);
+	}
+
+	/**
+	 * Melepaskan lock fallback traffic.
+	 *
+	 * @return void
+	 */
+	private static function release_traffic_scan_lock() {
+		delete_option( self::TRAFFIC_SCAN_LOCK_OPTION );
+	}
+
+	/**
+	 * Memindahkan event recurring ke jadwal berikutnya setelah fallback selesai.
+	 *
+	 * @param object $event Event WP-Cron yang sudah jatuh tempo.
+	 * @param int|null $delay Penundaan khusus dalam detik.
+	 * @return void
+	 */
+	private static function advance_scan_event( $event, $delay = null ) {
+		if ( ! is_object( $event ) || empty( $event->schedule ) ) {
+			return;
+		}
+
+		$current = wp_get_scheduled_event( self::SCAN_HOOK );
+		if ( ! $current || (int) $current->timestamp !== (int) $event->timestamp ) {
+			return;
+		}
+
+		wp_unschedule_event( (int) $event->timestamp, self::SCAN_HOOK, isset( $event->args ) ? $event->args : array() );
+
+		$schedules = wp_get_schedules();
+		$interval  = isset( $schedules[ $event->schedule ]['interval'] ) ? (int) $schedules[ $event->schedule ]['interval'] : 300;
+		$next      = time() + ( null !== $delay ? max( 60, (int) $delay ) : max( 60, $interval ) );
+		wp_schedule_event( $next, $event->schedule, self::SCAN_HOOK, isset( $event->args ) ? $event->args : array(), true );
 	}
 
 	/**

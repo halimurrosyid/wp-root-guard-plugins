@@ -187,6 +187,7 @@ class Settings {
 		$defaults = array(
 			'scan_interval'                 => 'every_5_minutes',
 			'enable_uploads_php_scan'       => true,
+			'enable_uploads_auto_quarantine' => true,
 			'enable_ip_blocker'             => false,
 			'enable_auto_quarantine'        => false,
 			'enable_email_notifications'    => false,
@@ -233,6 +234,10 @@ class Settings {
 
 		if ( array_key_exists( 'enable_uploads_php_scan', $new_settings ) ) {
 			$settings['enable_uploads_php_scan'] = filter_var( $new_settings['enable_uploads_php_scan'], FILTER_VALIDATE_BOOLEAN );
+		}
+
+		if ( array_key_exists( 'enable_uploads_auto_quarantine', $new_settings ) ) {
+			$settings['enable_uploads_auto_quarantine'] = filter_var( $new_settings['enable_uploads_auto_quarantine'], FILTER_VALIDATE_BOOLEAN );
 		}
 
 		if ( array_key_exists( 'enable_ip_blocker', $new_settings ) ) {

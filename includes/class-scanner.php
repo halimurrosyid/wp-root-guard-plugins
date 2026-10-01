@@ -503,14 +503,24 @@ class Scanner {
 				$malware_indicator = self::scan_file_for_webshell( $file_path );
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Sangat Berbahaya (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas PHP di Folder Uploads', 'wp-root-guard' );
 
-				if ( $settings['enable_auto_quarantine'] ) {
-					$quarantine_name = self::quarantine_core_file( $rel_path );
-					if ( false !== $quarantine_name ) {
-						$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
-						$file_path   = self::get_quarantine_dir() . $quarantine_name;
+					$quarantined = false;
+					if ( ! empty( $settings['enable_uploads_auto_quarantine'] ) || ! empty( $settings['enable_auto_quarantine'] ) ) {
+						$quarantine_name = self::quarantine_core_file( $rel_path );
+						if ( false !== $quarantine_name ) {
+							$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
+							$file_path   = self::get_quarantine_dir() . $quarantine_name;
+							$quarantined = true;
+						} else {
+							Logger::log(
+								esc_html__( 'Gagal mengarantina berkas PHP di folder uploads', 'wp-root-guard' ),
+								$rel_path,
+								esc_html__( 'Error', 'wp-root-guard' )
+							);
+						}
 					}
-				} else {
-					Logger::log(
+
+					if ( ! $quarantined ) {
+						Logger::log(
 						esc_html__( 'Berkas PHP terdeteksi di folder uploads', 'wp-root-guard' ),
 						$rel_path,
 						$malware_indicator ? esc_html__( 'Malware Suspicious', 'wp-root-guard' ) : esc_html__( 'Uploads PHP Threat', 'wp-root-guard' )
@@ -1476,7 +1486,15 @@ class Scanner {
 		}
 
 		if ( @rename( $quarantine_path, $original_path ) ) {
-			Settings::add_to_whitelist( $item['original_name'] );
+			// PHP di uploads tidak boleh otomatis masuk whitelist saat dipulihkan.
+			// Jika memang legitimate, admin harus memilih "Trust File" secara sadar.
+			$is_uploads_executable = (bool) preg_match(
+				'/^wp-content\/uploads\/.*\.(php|phtml|php3|php4|php5|php7|phps|phar|inc)$/i',
+				(string) $item['original_name']
+			);
+			if ( ! $is_uploads_executable ) {
+				Settings::add_to_whitelist( $item['original_name'] );
+			}
 
 			unset( $quarantines[ $found_key ] );
 			update_option( 'wp_root_guard_quarantined_folders', array_values( $quarantines ) );
@@ -1609,7 +1627,7 @@ class Scanner {
 		$active_keys = array();
 		foreach ( $threats as $threat ) {
 			if ( is_array( $threat ) && isset( $threat['type'], $threat['name'] ) ) {
-				$active_keys[] = $threat['type'] . ':' . $threat['name'];
+				$active_keys[] = self::get_threat_notification_key( $threat );
 			}
 		}
 
@@ -1626,10 +1644,9 @@ class Scanner {
 		$notified = array_intersect( $clean_notified, $active_keys );
 
 		foreach ( $threats as $threat ) {
-			$threat_key = $threat['type'] . ':' . $threat['name'];
+			$threat_key = self::get_threat_notification_key( $threat );
 			if ( ! in_array( $threat_key, $notified, true ) ) {
 				$new_threats[] = $threat;
-				$notified[]    = $threat_key;
 			}
 		}
 
@@ -1637,11 +1654,10 @@ class Scanner {
 			return;
 		}
 
-		update_option( 'wp_root_guard_notified_threats', $notified );
-
 		$site_name = get_bloginfo( 'name' );
 		$site_url  = home_url();
 		$count     = count( $new_threats );
+		$delivery_success = false;
 
 		// 1. Kirim Email jika aktif
 		if ( $settings['enable_email_notifications'] && ! empty( $settings['admin_email'] ) ) {
@@ -1651,7 +1667,7 @@ class Scanner {
 			$email_body .= sprintf( /* translators: %1$d: jumlah temuan, %2$s: URL situs */ esc_html__( 'WP Root Guard mendeteksi %1$d berkas/folder asing atau dimodifikasi baru pada root directory situs Anda (%2$s):', 'wp-root-guard' ), $count, $site_url ) . "\r\n\r\n";
 
 			foreach ( $new_threats as $threat ) {
-				$type_label   = ( 'folder' === $threat['type'] ) ? esc_html__( 'Folder Asing', 'wp-root-guard' ) : esc_html__( 'Berkas/Integritas Core', 'wp-root-guard' );
+				$type_label   = ( 'folder' === $threat['type'] ) ? esc_html__( 'Folder Asing', 'wp-root-guard' ) : ( 'uploads_php' === $threat['type'] ? esc_html__( 'PHP di Folder Uploads', 'wp-root-guard' ) : esc_html__( 'Berkas/Integritas Core', 'wp-root-guard' ) );
 				$status_label = ( __( 'Quarantined Automatically', 'wp-root-guard' ) === $threat['status'] ) ? esc_html__( 'Sudah Dikarantina Otomatis', 'wp-root-guard' ) : esc_html__( 'Belum Dikarantina', 'wp-root-guard' );
 				
 				$email_body .= "- " . sprintf( /* translators: %1$s: tipe, %2$s: nama */ esc_html__( '%1$s: %2$s', 'wp-root-guard' ), $type_label, $threat['name'] ) . "\r\n";
@@ -1667,7 +1683,16 @@ class Scanner {
 			$email_body .= admin_url( 'index.php?page=wp-root-guard' ) . "\r\n\r\n";
 			$email_body .= esc_html__( 'Pesan ini dikirim secara otomatis oleh WP Root Guard.', 'wp-root-guard' );
 
-			wp_mail( $settings['admin_email'], $subject, $email_body );
+			$email_sent = wp_mail( $settings['admin_email'], $subject, $email_body );
+			if ( $email_sent ) {
+				$delivery_success = true;
+			} else {
+				Logger::log(
+					esc_html__( 'Notifikasi email gagal dikirim', 'wp-root-guard' ),
+					$settings['admin_email'],
+					esc_html__( 'Error', 'wp-root-guard' )
+				);
+			}
 		}
 
 		// 2. Kirim Telegram jika aktif
@@ -1696,8 +1721,41 @@ class Scanner {
 
 			$tg_msg .= "🔗 [Buka Dashboard Root Guard](" . admin_url( 'index.php?page=wp-root-guard' ) . ")";
 
-			self::send_telegram_message( $settings['telegram_bot_token'], $settings['telegram_chat_id'], $tg_msg );
+			if ( self::send_telegram_message( $settings['telegram_bot_token'], $settings['telegram_chat_id'], $tg_msg ) ) {
+				$delivery_success = true;
+			}
 		}
+
+		// Tandai hanya setelah minimal satu kanal benar-benar berhasil.
+		// Jika semua kanal gagal, scan berikutnya akan mencoba lagi.
+		if ( $delivery_success ) {
+			foreach ( $new_threats as $threat ) {
+				$notified[] = self::get_threat_notification_key( $threat );
+			}
+			update_option( 'wp_root_guard_notified_threats', array_values( array_unique( $notified ) ), false );
+		}
+	}
+
+	/**
+	 * Membuat identifier notifikasi yang berubah jika isi file berubah.
+	 *
+	 * @param array $threat Data ancaman.
+	 * @return string Identifier stabil untuk anti-spam.
+	 */
+	private static function get_threat_notification_key( $threat ) {
+		$type = isset( $threat['type'] ) ? (string) $threat['type'] : 'unknown';
+		$name = isset( $threat['name'] ) ? (string) $threat['name'] : 'unknown';
+		$key  = $type . ':' . $name;
+		$path = isset( $threat['path'] ) ? (string) $threat['path'] : '';
+
+		if ( $path && is_file( $path ) && is_readable( $path ) ) {
+			$hash = @hash_file( 'sha256', $path );
+			if ( $hash ) {
+				$key .= ':' . $hash;
+			}
+		}
+
+		return $key;
 	}
 
 	/**
