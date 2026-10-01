@@ -245,3 +245,91 @@ flowchart TD
 3. **Recovery Time**: Pemulihan berkas core termodifikasi dapat dilakukan dalam < 3 detik via tombol Restore.
 4. **Zero Vulnerability**: Lolos 100% audit keamanan (XSS, CSRF, Path Traversal, IP Spoofing, RCE).
 5. **Code Maintainability**: Ukuran file modul admin tidak melebihi 400 baris per file dengan pemisahan View dan Controller yang bersih.
+
+---
+
+## 10. Audit Blindspot Fitur Existing (Static Review, 29 September 2026)
+
+Bagian ini mencatat kondisi implementasi aktual yang perlu dibedakan dari requirement, roadmap, dan klaim produk. Temuan ini menjadi dasar prioritas hardening; bukan berarti seluruh fitur gagal bekerja, tetapi menunjukkan batas keamanan, operasional, dan cakupan deteksinya.
+
+### 10.1 Matriks Blindspot per Fitur
+
+| Fitur | Kondisi / Blindspot Aktual | Dampak | Kebutuhan Pengembangan |
+|---|---|---|---|
+| Lifecycle aktivasi | Aktivasi membuat baseline, menjadwalkan cron, lalu dapat menjalankan scan penuh pada request yang sama. | Aktivasi dapat lambat atau timeout pada situs besar. | Pindahkan initial scan ke background job dan tampilkan status inisialisasi. |
+| WP-Cron otomatis | Cron bergantung pada traffic WordPress dan belum memiliki scan lock global. | Scan dapat terlambat pada situs sepi atau tumpang tindih dengan scan AJAX/cron lain. | Gunakan lock, missed-run monitor, resumable job, dan panduan system cron. |
+| Root folder scan | Hanya memindai level pertama root. | Malware di dalam folder `wp-content`, plugin, theme, atau folder nested lain tidak tercakup oleh fitur ini. | Tambahkan scope scanner terpisah untuk area penting dan manifest integritas. |
+| Root file baseline | Baseline awal mempercayai kondisi filesystem saat plugin dipasang; berkas lebih dari batas ukuran dapat diabaikan. | Situs yang sudah terinfeksi dapat menjadikan artefak malware sebagai baseline; file besar tidak terverifikasi. | Terapkan baseline approval, status `pending verification`, dan status khusus untuk file yang tidak dipindai. |
+| Core Checksums API | Jika API checksum gagal atau circuit breaker aktif, core integrity scan dilewati; hasil scan tetap dapat menjadi `safe` bila tidak ada temuan lain. | False-safe: core yang tidak terverifikasi dapat dilaporkan aman. | Tambahkan status `degraded`/`failed`, detail komponen yang belum diverifikasi, retry terukur, dan alert kegagalan berulang. |
+| Core injection detection | Traversal `wp-admin`/`wp-includes` penuh pada setiap scan dan mengandalkan daftar checksum yang tersedia. | Beban I/O meningkat; saat checksum unavailable, injection scan juga tidak berjalan. | Batch scan, cache manifest, scan cursor, dan status coverage. |
+| Uploads PHP scanner | Mendeteksi ekstensi script secara rekursif, tetapi belum memeriksa MIME mismatch, `.user.ini`, SVG/JS/HTML berbahaya, polyglot, atau konfigurasi server. | Banyak teknik upload malware dan persistence dapat lolos. | Tambahkan MIME/content analysis, double extension, server config scan, dan risk scoring. |
+| Webshell signature scanner | Hanya memindai ekstensi `php`, `htaccess`, `html`, dan `txt`, berukuran maksimal 1 MB, dengan signature statis. | Payload besar, terobfuskasi, atau berformat lain dapat tidak terdeteksi. | Tambahkan entropy, hex/`chr()`, concatenation, variable function, dynamic include, dan analisis berbasis skor. |
+| Blocker request | Blocker berjalan pada hook WordPress `init`. File PHP di uploads yang dipanggil langsung dapat dieksekusi web server sebelum WordPress memuat plugin. Pattern request juga belum dinormalisasi penuh untuk encoding URL. | Proteksi tidak efektif terhadap direct execution dan beberapa variasi encoded payload. | Tambahkan deny-execution rule server-level untuk Apache/NGINX/IIS, canonicalization request, dan pengujian per web server. |
+| IP blocker | IP expiry bergantung pada WP-Cron; aturan `.htaccess` dapat tertinggal bila cron tidak berjalan. Perubahan `.htaccess` belum mempunyai backup/rollback terintegrasi. | Risiko lockout, konfigurasi Apache terganggu, atau blokir kedaluwarsa tetap aktif. | Backup berversi, syntax/access validation, rollback, dan evaluasi expiry saat read path. |
+| Self-healing core | Konten remote dari SVN/GitHub ditulis langsung tanpa pembandingan checksum resmi sebelum write; write belum atomic. | Berkas bisa tidak lengkap saat proses gagal dan integritas konten restore tidak diverifikasi secara independen. | Verifikasi checksum, temporary file, atomic rename, backup singkat, dan rollback. |
+| Diff viewer | Diff dibatasi 300 perbedaan tetapi belum dibatasi dengan allowlist manifest core yang sama ketatnya dengan restore. | Analisis dapat tidak lengkap; path policy perlu disatukan. | Gunakan helper path tunggal dan tampilkan status diff terpotong/coverage. |
+| Secure Code Inspector | Inspector dapat membaca file sampai 2 MB berdasarkan path di bawah root; validasi prefix path perlu boundary direktori yang ketat. | Berkas sensitif seperti konfigurasi dapat terekspos kepada role admin; ada risiko sibling-path bila prefix tidak dibatasi separator. | Canonical path helper, allowlist berdasarkan temuan, redaksi secret, dan audit akses inspector. |
+| Quarantine vault | Vault berada di `wp-content/uploads`; proteksi `.htaccess` tidak berlaku untuk NGINX/IIS dan `rename()` dapat gagal jika filesystem berbeda. | File karantina dapat terekspos publik atau threat gagal dipindahkan tanpa remediation alternatif. | Simpan vault di luar webroot bila tersedia; deny rule tervalidasi; fallback copy-verify-delete; dry-run dan rollback. |
+| Auto-quarantine | Tindakan dapat dilakukan berdasarkan deteksi ekstensi/signature yang belum memiliki confidence score. | False positive dapat memindahkan file legitimate dan mengganggu situs. | Tambahkan risk score, approval threshold, preview dry-run, dan restore teruji. |
+| Notifikasi | Deduplikasi menggunakan identitas `type:name`; perubahan berulang pada file sama tidak selalu menghasilkan alert baru. Tidak ada retry queue atau delivery state. | Incident lanjutan dapat terlewat dan kegagalan provider sulit ditelusuri. | Gunakan fingerprint berbasis hash/status, retry terbatas, delivery audit, rate limit, dan redaksi path sensitif. |
+| Logging | Log dibatasi 100 entri dalam Options API. | Bukti forensik cepat tergeser oleh scan berulang; kurang ideal untuk multisite/insiden besar. | Tabel audit khusus atau export terstruktur, retention policy, event ID, actor/IP/request ID. |
+| Admin & AJAX | Rate limit hanya berlaku untuk scan AJAX per user; controller dan render masih monolitik. | Operasi berat tetap dapat bersaing dengan cron; kode sulit diuji dan dirawat. | Global scan lock, queue status, service/controller/view split, dan test endpoint. |
+| Plugin/theme/MU-plugin | Tidak ada integrity scan untuk plugin, theme, atau MU-plugin; tidak ada audit database persistence. | Backdoor pada kode non-core, rogue admin, cron asing, option injection, redirect, atau SEO-spam dapat luput. | Manifest/checksum WordPress.org, baseline custom approval, audit user/cron/options/redirect/permission/ownership. |
+| Updater GitHub | URL package dibatasi domain, tetapi artefak update belum diverifikasi dengan signature atau SHA-256 manifest. | Risiko supply-chain jika release/repository dikompromikan. | Signed release, checksum manifest, pinned metadata, dan opsi approval manual. |
+| Anti-deactivate | Belum ada policy, detector, external alert, atau recovery workflow khusus deaktivasi. | Plugin dapat dinonaktifkan tanpa bukti/alert proaktif. | Protected deactivation policy, tamper-evident audit, break-glass recovery, dan optional MU-plugin guardian. |
+
+### 10.2 Kesenjangan Requirement vs Implementasi
+
+Requirement berikut masih merupakan target/roadmap dan **belum boleh diposisikan sebagai fitur aktif** sampai tersedia implementasi serta pengujian yang dapat dibuktikan:
+
+- Chunked/batch processing uploads dan pemulihan scan setelah timeout.
+- Local snapshot/rollback `.htaccess` dan `wp-config.php`.
+- Forensic ZIP berpassword.
+- Custom webhook Discord/Slack/SIEM.
+- WP-CLI commands.
+- Advanced heuristic scanner: entropy, concatenation, dan hex obfuscation.
+- Admin views terpisah seperti `admin/views/` dan modularisasi penuh controller.
+
+### 10.3 Requirement Hardening Baru
+
+1. **Status Kepercayaan Scan**
+   - Scan wajib mengembalikan status `safe`, `threat`, `degraded`, atau `failed`.
+   - `safe` hanya boleh dipakai jika seluruh scope aktif selesai diverifikasi tanpa error kritis.
+
+2. **Server-Level Execution Guard**
+   - Plugin harus menyediakan rule yang memblokir eksekusi script dalam uploads dan vault pada Apache, NGINX, dan IIS.
+   - Setelah rule diterapkan, plugin harus mencatat hasil validasi akses.
+
+3. **Canonical Filesystem Guard**
+   - Semua operasi read, diff, restore, quarantine, delete, dan restore-from-quarantine harus menggunakan helper canonical path yang sama.
+   - Validasi containment harus memakai boundary direktori, bukan prefix string biasa.
+
+4. **Verified Remediation**
+   - Restore core hanya boleh menulis file setelah konten remote cocok dengan checksum resmi.
+   - Write harus atomic dan memiliki backup/rollback terukur.
+
+5. **Baseline Trust Separation**
+   - Core update tidak boleh secara otomatis mempercayai ulang semua folder/berkas root.
+   - Perubahan baseline root harus membutuhkan approval admin atau policy eksplisit.
+
+6. **Coverage Transparan**
+   - Dashboard harus menyatakan area yang dipindai, dilewati, gagal dipindai, dan tidak didukung.
+   - File melebihi limit ukuran, permission denied, dan remote API failure wajib dilaporkan sebagai coverage gap.
+
+7. **Safe Automation**
+   - Auto-quarantine dan auto-block harus mendukung dry-run, evidence log, rollback, dan batas tindakan per eksekusi.
+
+### 10.4 Prioritas Remediasi
+
+| Prioritas | Target | Kriteria Hasil |
+| :---: | :--- | :--- |
+| **P0** | Status `degraded/failed`, scan lock, dan batch scan | Tidak ada false-safe atau scan bertumpuk tanpa terdeteksi. |
+| **P0** | Uploads/vault server-level guard | Script atau artefak karantina tidak dapat diakses/eksekusi publik di Apache, NGINX, dan IIS. |
+| **P0** | Canonical path guard dan inspector redaction | Tidak ada bypass containment atau pembacaan secret melalui inspector. |
+| **P0** | Checksum-verified atomic restore | Restore tidak menulis konten tidak tervalidasi dan dapat dipulihkan jika gagal. |
+| **P0** | Baseline root/core separation | Core update tidak melegitimasi perubahan root yang mencurigakan. |
+| **P1** | Plugin/theme/MU-plugin dan persistence audit | Cakupan deteksi meliputi kode non-core serta persistence database utama. |
+| **P1** | Quarantine/`.htaccess` rollback | Aksi otomatis dapat dipreview, dilacak, dan dibatalkan dengan aman. |
+| **P1** | Signed updater dan notification delivery state | Risiko supply-chain dan alert failure berkurang. |
+| **P2** | Advanced heuristic scanner dan forensic logging | Deteksi obfuscation serta investigasi insiden lebih kuat. |
+| **P2** | Refactor admin/scanner dan automated tests | Kode dapat diuji, dirawat, dan diregresi secara konsisten. |

@@ -248,8 +248,8 @@ class Admin {
 
 		switch ( $action ) {
 			case 'scan_now':
-				Scanner::perform_scan();
-				wp_safe_redirect( add_query_arg( 'message', 'scanned', $redirect_url ) );
+				$scan_result = Scanner::perform_scan();
+				wp_safe_redirect( add_query_arg( 'message', ( isset( $scan_result['status'] ) && 'failed' === $scan_result['status'] ) ? 'scan_failed' : 'scanned', $redirect_url ) );
 				exit;
 
 			case 'rebuild_baseline':
@@ -453,6 +453,17 @@ class Admin {
 				wp_safe_redirect( add_query_arg( 'message', 'settings_saved', $redirect_url ) );
 				exit;
 
+			case 'repair_cron':
+				$repaired = Cron::schedule_event();
+				if ( $repaired ) {
+					Logger::log( esc_html__( 'Jadwal pemindaian otomatis diperbaiki dari dashboard', 'wp-root-guard' ), '-', esc_html__( 'Success', 'wp-root-guard' ) );
+					wp_safe_redirect( add_query_arg( 'message', 'cron_repaired', $redirect_url ) );
+				} else {
+					Logger::log( esc_html__( 'Gagal memperbaiki jadwal pemindaian otomatis dari dashboard', 'wp-root-guard' ), '-', esc_html__( 'Error', 'wp-root-guard' ) );
+					wp_safe_redirect( add_query_arg( 'message', 'cron_repair_failed', $redirect_url ) );
+				}
+				exit;
+
 			case 'test_telegram':
 				$token   = isset( $_POST['telegram_bot_token'] ) ? sanitize_text_field( $_POST['telegram_bot_token'] ) : '';
 				$chat_id = isset( $_POST['telegram_chat_id'] ) ? sanitize_text_field( $_POST['telegram_chat_id'] ) : '';
@@ -636,6 +647,10 @@ class Admin {
 
 		$results = Scanner::perform_scan();
 
+		if ( isset( $results['status'] ) && 'failed' === $results['status'] ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'Pemindaian gagal. Periksa log aktivitas.', 'wp-root-guard' ) ), 500 );
+		}
+
 		wp_send_json_success( array(
 			'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ),
 			'results' => $results,
@@ -692,6 +707,8 @@ class Admin {
 		$baseline_list   = Baseline::get_baseline_folders();
 		$baseline_files  = Baseline::get_baseline_files();
 		$logs            = Logger::get_logs();
+		$scan_state      = Scanner::get_scan_state();
+		$schedule_status = Cron::get_schedule_status();
 
 		// Hitung data ringkasan (Summary)
 		$protected_count   = count( $baseline_list ) + count( $baseline_files ) + count( $user_whitelist );
@@ -700,9 +717,38 @@ class Admin {
 		$quarantine_count  = is_array( $quarantined ) ? count( $quarantined ) : 0;
 
 		$last_scan_time = ! empty( $results['last_scan'] ) ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $results['last_scan'] ) ) : esc_html__( 'Belum pernah dipindai', 'wp-root-guard' );
-
-		$next_cron      = wp_next_scheduled( 'wp_root_guard_cron_scan' );
+		$next_cron      = ! empty( $schedule_status['next_timestamp'] ) ? $schedule_status['next_timestamp'] : 0;
 		$next_scan_time = $next_cron ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_cron ) : esc_html__( 'Tidak dijadwalkan', 'wp-root-guard' );
+
+		$last_completed_epoch = ! empty( $scan_state['completed_at_gmt'] ) ? strtotime( $scan_state['completed_at_gmt'] . ' UTC' ) : ( ! empty( $results['last_scan'] ) ? strtotime( $results['last_scan'] ) : 0 );
+		$stale_after          = max( (int) $schedule_status['interval_seconds'] * 2, 900 );
+		$scan_is_stale        = ! $last_completed_epoch || ( time() - $last_completed_epoch > $stale_after );
+		$scheduler_status     = 'healthy';
+
+		if ( $schedule_status['cron_disabled'] ) {
+			$scheduler_status = 'external';
+		}
+
+		if ( ! $schedule_status['configuration_ok'] ) {
+			$scheduler_status = 'missing';
+		} elseif ( $schedule_status['is_due'] || $scan_is_stale ) {
+			$scheduler_status = 'overdue';
+		} elseif ( 'failed' === $scan_state['status'] ) {
+			$scheduler_status = 'failed';
+		} elseif ( 'running' === $scan_state['status'] ) {
+			$scheduler_status = 'running';
+		}
+
+		$protection_status_ok = 'safe' === $results['status'] && in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true );
+		$scheduler_labels = array(
+			'healthy'  => esc_html__( 'Sehat', 'wp-root-guard' ),
+			'running'  => esc_html__( 'Sedang berjalan', 'wp-root-guard' ),
+			'external' => esc_html__( 'Pemicu eksternal', 'wp-root-guard' ),
+			'overdue'  => esc_html__( 'Terlambat / menunggu pemicu', 'wp-root-guard' ),
+			'missing'  => esc_html__( 'Event tidak valid', 'wp-root-guard' ),
+			'failed'   => esc_html__( 'Scan terakhir gagal', 'wp-root-guard' ),
+		);
+		$scheduler_label = isset( $scheduler_labels[ $scheduler_status ] ) ? $scheduler_labels[ $scheduler_status ] : esc_html__( 'Tidak diketahui', 'wp-root-guard' );
 
 		$message_code = isset( $_GET['message'] ) ? sanitize_text_field( $_GET['message'] ) : '';
 		$notice_text  = '';
@@ -711,6 +757,10 @@ class Admin {
 		switch ( $message_code ) {
 			case 'scanned':
 				$notice_text = esc_html__( 'Pemindaian root & berkas core selesai.', 'wp-root-guard' );
+				break;
+			case 'scan_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Pemindaian gagal. Periksa status checkpoint dan log aktivitas untuk detailnya.', 'wp-root-guard' );
 				break;
 			case 'rebuilt':
 				$notice_text = esc_html__( 'Baseline folder & berkas berhasil dibangun ulang.', 'wp-root-guard' );
@@ -792,6 +842,13 @@ class Admin {
 				break;
 			case 'settings_saved':
 				$notice_text = esc_html__( 'Pengaturan berhasil disimpan.', 'wp-root-guard' );
+				break;
+			case 'cron_repaired':
+				$notice_text = esc_html__( 'Jadwal WP-Cron berhasil diperiksa dan diperbaiki.', 'wp-root-guard' );
+				break;
+			case 'cron_repair_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Jadwal WP-Cron gagal diperbaiki. Periksa log dan konfigurasi hosting.', 'wp-root-guard' );
 				break;
 			case 'tg_test_success':
 				$notice_text = esc_html__( 'Koneksi bot Telegram berhasil! Pesan uji coba notifikasi keamanan telah dikirim ke Telegram Anda.', 'wp-root-guard' );
@@ -921,20 +978,24 @@ class Admin {
 				<div class="rg-dashboard-grid">
 					
 					<!-- STATUS CARD -->
-					<div id="rg-status-card" class="rg-card rg-status-card <?php echo 'safe' === $results['status'] ? 'rg-status-safe' : 'rg-status-threat'; ?>">
+					<div id="rg-status-card" class="rg-card rg-status-card <?php echo 'safe' === $results['status'] && $protection_status_ok ? 'rg-status-safe' : 'rg-status-threat'; ?>">
 						<div class="rg-card-header">
 							<h2><?php esc_html_e( 'Status Perlindungan', 'wp-root-guard' ); ?></h2>
 						</div>
 						<div class="rg-card-body text-center">
 							<div class="rg-status-badge">
-								<?php if ( 'safe' === $results['status'] ) : ?>
-									<span class="rg-icon-large">🛡️</span>
-									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder, berkas asing, atau berkas core bermasalah yang terdeteksi.', 'wp-root-guard' ); ?></p>
-								<?php else : ?>
+								<?php if ( 'safe' !== $results['status'] ) : ?>
 									<span class="rg-icon-large">⚠️</span>
 									<span class="rg-status-text text-danger"><?php esc_html_e( 'BAHAYA', 'wp-root-guard' ); ?></span>
 									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman berkas/folder asing atau modifikasi core aktif!', 'wp-root-guard' ); ?></p>
+								<?php elseif ( ! $protection_status_ok ) : ?>
+									<span class="rg-icon-large">⏱️</span>
+									<span class="rg-status-text text-danger"><?php esc_html_e( 'PERLU PERHATIAN', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php esc_html_e( 'Hasil scan terakhir bersih, tetapi scheduler belum membuktikan scan berkala berjalan normal.', 'wp-root-guard' ); ?></p>
+								<?php else : ?>
+									<span class="rg-icon-large">🛡️</span>
+									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder, berkas asing, atau berkas core bermasalah yang terdeteksi.', 'wp-root-guard' ); ?></p>
 								<?php endif; ?>
 							</div>
 						</div>
@@ -967,10 +1028,23 @@ class Admin {
 									<th><?php esc_html_e( 'Pemindaian Terakhir:', 'wp-root-guard' ); ?></th>
 									<td><?php echo esc_html( $last_scan_time ); ?></td>
 								</tr>
-								<tr>
-									<th><?php esc_html_e( 'Pemindaian Berikutnya (WP Cron):', 'wp-root-guard' ); ?></th>
-									<td><?php echo esc_html( $next_scan_time ); ?></td>
-								</tr>
+					<tr>
+						<th><?php esc_html_e( 'Pemindaian Berikutnya (WP Cron):', 'wp-root-guard' ); ?></th>
+						<td><?php echo esc_html( $schedule_status['is_due'] ? esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) : $next_scan_time ); ?></td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Status Scheduler:', 'wp-root-guard' ); ?></th>
+						<td>
+							<strong class="<?php echo 'healthy' === $scheduler_status || 'running' === $scheduler_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( $scheduler_label ); ?></strong>
+							<?php if ( ! in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true ) ) : ?>
+								<form method="post" action="" style="display: inline-block; margin-left: 8px;">
+									<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
+									<input type="hidden" name="rg_action" value="repair_cron">
+									<button type="submit" class="button button-small"><?php esc_html_e( 'Perbaiki Jadwal', 'wp-root-guard' ); ?></button>
+								</form>
+							<?php endif; ?>
+						</td>
+					</tr>
 							</table>
 						</div>
 					</div>
@@ -1687,6 +1761,9 @@ class Admin {
 									</select>
 									<p class="rg-field-desc">
 										<?php esc_html_e( 'Tentukan seberapa sering WP Root Guard secara otomatis memindai folder root dan berkas core di latar belakang.', 'wp-root-guard' ); ?>
+									</p>
+									<p class="rg-field-desc">
+										<?php esc_html_e( 'Catatan: WP-Cron dipicu oleh request ke WordPress. Jika situs sepi traffic, loopback diblokir, atau WP-Cron dinonaktifkan oleh hosting, gunakan cron hosting atau worker eksternal.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 								<div class="rg-form-group" style="margin-top: 16px;">
