@@ -11,15 +11,23 @@
 - **Deteksi File Penyusup Core (Core Injection Detection) [BARU v1.3.0]**: Mendeteksi adanya berkas asing baru yang tidak dikenal yang ditanam di dalam folder sensitif `wp-admin/` dan `wp-includes/`.
 - **Perbandingan Perbedaan Kode (Diff Viewer) [BARU v1.3.0]**: Menampilkan tabel pembanding visual kode baris per baris (*side-by-side code diff*) antara kode berkas lokal Anda (merah) dan kode resmi dari WordPress.org (hijau).
 - **Perbaikan Otomatis Mandiri (Self-Healing / Auto-Restore) [BARU v1.3.0]**: Menyediakan tombol **Perbaiki Berkas** untuk mengunduh kode asli berkas core langsung dari server SVN resmi WordPress.org dan menimpa berkas lokal yang rusak dengan aman.
-- **Karantina Otomatis (Auto-Quarantine)**: Secara otomatis mengisolasi folder asing, berkas asing root, dan berkas penyusup asing di folder core dengan memindahkannya ke direktori karantina dan memblokir akses web menggunakan `.htaccess`.
+- **Karantina Otomatis (Auto-Quarantine)**: Secara otomatis mengisolasi folder asing, berkas asing root, berkas penyusup core, serta berkas eksekusi PHP di `wp-content/uploads/` dengan memindahkannya ke direktori karantina.
 - **Notifikasi Telegram & Email**: Mengirim peringatan *real-time* instan ke Telegram Bot dan Email Administrator begitu ada ancaman baru terdeteksi, dilengkapi fitur anti-spam (hanya sekali kirim per temuan baru).
-- **Pembaruan Otomatis dari GitHub**: Terintegrasi dengan pembaruan otomatis bawaan WordPress yang terhubung langsung ke rilis GitHub ini.
+- **Penjadwalan Dashboard-First**: Memakai WP-Cron serta fallback berbasis request website, sehingga admin tidak perlu menjalankan `wp-cron.php` secara manual selama situs menerima traffic.
+- **Rilis GitHub**: GitHub Actions membuat paket ZIP bersih untuk dipasang melalui Dashboard WordPress; pembuatan rilis tidak melakukan deployment langsung ke production.
 
 ---
 
 ## Log Pembaruan (Changelog)
 
-### v3.2.0 (24 September 2026)
+### v3.2.0 (1 Oktober 2026)
+- **Automatic Scanning Traffic Fallback**: Menambahkan fallback pemindaian saat request website ketika event WP-Cron sudah jatuh tempo. Dilengkapi lock lintas-request dan penggeseran jadwal berikutnya untuk mencegah scan ganda ketika loopback WP-Cron gagal, termasuk pada lab Docker.
+- **Checkpoint & Scheduler UX**: Status scheduler kini membedakan event valid, scan terlambat, scan gagal, dan kondisi yang menunggu request website. Dashboard tidak lagi mengharuskan admin memahami worker cron Docker.
+- **Uploads PHP Auto-Quarantine**: Menambahkan pengaturan terpisah yang aktif secara default untuk memindahkan ekstensi eksekusi (`php`, `phtml`, `phar`, `inc`, dan variasinya) dari `wp-content/uploads/` ke vault karantina. Ini menjadi lapisan perlindungan yang efektif pada Nginx yang tidak membaca `.htaccess`.
+- **Notifikasi Lebih Andal**: Identifier ancaman memakai hash SHA-256 isi file, sehingga perubahan isi pada path yang sama dapat memicu notifikasi baru. Ancaman hanya ditandai sudah diberitahukan setelah minimal satu kanal berhasil; kegagalan email dicatat dan akan dicoba kembali.
+- **Pemulihan False Positive Lebih Aman**: Restore berkas PHP dari `uploads` tidak lagi otomatis memasukkannya ke whitelist. Admin harus memilih `Trust File` secara sadar setelah memverifikasi isi berkas.
+- **Local Lab Simplification**: Docker Compose lab disederhanakan menjadi service WordPress dan database; konfigurasi tidak lagi bergantung pada container worker cron khusus.
+- **Metadata Author**: Metadata plugin diperbarui menjadi PuTI Telkom University dengan tautan resmi Direktorat PuTI.
 - **Otomatisasi Core Update & Zero False Positive**: Mengintegrasikan listener hook `_core_updated_successfully` dan deteksi versi fallback dengan *Double-Checked Locking*. Otomatis membersihkan cache transient checksums resmi, memperbarui snapshot baseline root dengan validasi HMAC-SHA256, dan mencatat riwayat ke log audit terstruktur tanpa memicu alarm palsu (*zero false positive*) saat WordPress diperbarui secara otomatis.
 - **Dual-Source Fallback Remote Core Restorer**: Menambahkan mekanisme unduh cerdas dengan fallback ganda (SVN WordPress.org tags dan GitHub Official Mirror) serta circuit breaker transient (15 menit) untuk pemulihan berkas core dan komparasi diff kode.
 - **Perbaikan Kritis Apache 2.4 `.htaccess` Syntax (Error 500 Fix)**: Menyelesaikan *alert error* `negative Require directive has no effect in <RequireAny> directive` dengan membungkus aturan pemblokiran IP dalam kontainer `<RequireAll>` dan direktif `Require all granted`. Mencegah situs mengalami *500 Internal Server Error* saat terjadi pemblokiran IP.
@@ -172,5 +180,5 @@
 ## Hak Cipta & Lisensi
 
 - Pembuat: **PuTI Telkom University**
-- Situs Web: [ajidmujaddid.staff.telkomuniversity.ac.id](https://ajidmujaddid.staff.telkomuniversity.ac.id/)
+- Situs Web: [Direktorat PuTI Telkom University](https://it.telkomuniversity.ac.id/)
 - Lisensi: GPL v2 atau yang lebih baru.
