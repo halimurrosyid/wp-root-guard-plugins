@@ -440,6 +440,7 @@ class Admin {
 				$settings_data = array(
 					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'every_5_minutes',
 					'enable_uploads_php_scan'      => isset( $_POST['enable_uploads_php_scan'] ),
+					'enable_uploads_auto_quarantine' => isset( $_POST['enable_uploads_auto_quarantine'] ),
 					'enable_ip_blocker'            => isset( $_POST['enable_ip_blocker'] ),
 					'enable_auto_quarantine'       => isset( $_POST['enable_auto_quarantine'] ),
 					'enable_email_notifications'    => isset( $_POST['enable_email_notifications'] ),
@@ -743,8 +744,8 @@ class Admin {
 		$scheduler_labels = array(
 			'healthy'  => esc_html__( 'Sehat', 'wp-root-guard' ),
 			'running'  => esc_html__( 'Sedang berjalan', 'wp-root-guard' ),
-			'external' => esc_html__( 'Pemicu eksternal', 'wp-root-guard' ),
-			'overdue'  => esc_html__( 'Terlambat / menunggu pemicu', 'wp-root-guard' ),
+			'external' => esc_html__( 'Pemicu traffic website', 'wp-root-guard' ),
+			'overdue'  => esc_html__( 'Menunggu request website / tertunda', 'wp-root-guard' ),
 			'missing'  => esc_html__( 'Event tidak valid', 'wp-root-guard' ),
 			'failed'   => esc_html__( 'Scan terakhir gagal', 'wp-root-guard' ),
 		);
@@ -1029,8 +1030,8 @@ class Admin {
 									<td><?php echo esc_html( $last_scan_time ); ?></td>
 								</tr>
 					<tr>
-						<th><?php esc_html_e( 'Pemindaian Berikutnya (WP Cron):', 'wp-root-guard' ); ?></th>
-						<td><?php echo esc_html( $schedule_status['is_due'] ? esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) : $next_scan_time ); ?></td>
+						<th><?php esc_html_e( 'Pemindaian Berikutnya:', 'wp-root-guard' ); ?></th>
+						<td><?php echo esc_html( $schedule_status['is_due'] ? ( ! empty( $schedule_status['traffic_fallback'] ) ? esc_html__( 'Menunggu request website', 'wp-root-guard' ) : esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) ) : $next_scan_time ); ?></td>
 					</tr>
 					<tr>
 						<th><?php esc_html_e( 'Status Scheduler:', 'wp-root-guard' ); ?></th>
@@ -1481,7 +1482,7 @@ class Admin {
 														👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
 													</button>
 												<?php endif; ?>
-												<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin memulihkan item ini kembali ke root asal? Item ini otomatis akan masuk ke Whitelist agar tidak dikarantina kembali.', 'wp-root-guard' ) ); ?>')) { submitFolderAction('restore_folder', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
+														<button type="button" class="button button-small button-primary" style="background-color: #10b981; border-color: #10b981;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin memulihkan item ini? PHP di folder uploads tidak otomatis masuk whitelist dan dapat dikarantina kembali. Gunakan Trust File hanya jika sudah diverifikasi.', 'wp-root-guard' ) ); ?>')) { submitFolderAction('restore_folder', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
 													↩️ <?php esc_html_e( 'Restore', 'wp-root-guard' ); ?>
 												</button>
 												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Peringatan keras: Item ini beserta seluruh file di dalamnya akan dihapus secara PERMANEN dari server. Tindakan ini tidak bisa dibatalkan. Lanjutkan?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_permanently', '<?php echo esc_js( $item['quarantine_name'] ); ?>'); }">
@@ -1763,7 +1764,7 @@ class Admin {
 										<?php esc_html_e( 'Tentukan seberapa sering WP Root Guard secara otomatis memindai folder root dan berkas core di latar belakang.', 'wp-root-guard' ); ?>
 									</p>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Catatan: WP-Cron dipicu oleh request ke WordPress. Jika situs sepi traffic, loopback diblokir, atau WP-Cron dinonaktifkan oleh hosting, gunakan cron hosting atau worker eksternal.', 'wp-root-guard' ); ?>
+										<?php esc_html_e( 'Catatan: plugin menjalankan scan melalui WP-Cron dan memiliki fallback berbasis request website. Jika situs tidak menerima traffic, pemindaian dapat tertunda; untuk interval presisi gunakan cron hosting.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 								<div class="rg-form-group" style="margin-top: 16px;">
@@ -1772,18 +1773,28 @@ class Admin {
 										<span class="rg-switch-slider"></span>
 										<strong><?php esc_html_e( 'Aktifkan Pemindaian Berkas PHP di Folder wp-content/uploads/', 'wp-root-guard' ); ?></strong>
 									</label>
-									<p class="rg-field-desc">
-										<?php esc_html_e( 'Folder uploads seharusnya hanya berisi berkas media (gambar/dokumen). Mengaktifkan opsi ini akan mendeteksi dan mengisolasi setiap berkas eksekusi PHP atau webshell yang disisipkan di dalam direktori wp-content/uploads/.', 'wp-root-guard' ); ?>
-									</p>
-								</div>
-								<div class="rg-form-group" style="margin-top: 16px;">
+					<p class="rg-field-desc">
+						<?php esc_html_e( 'Folder uploads seharusnya hanya berisi berkas media (gambar/dokumen). Mengaktifkan opsi ini akan mendeteksi dan mengisolasi setiap berkas eksekusi PHP atau webshell yang disisipkan di dalam direktori wp-content/uploads/.', 'wp-root-guard' ); ?>
+					</p>
+				</div>
+				<div class="rg-form-group" style="margin-top: 16px;">
+					<label class="rg-switch-label">
+						<input type="checkbox" name="enable_uploads_auto_quarantine" value="1" <?php checked( $settings['enable_uploads_auto_quarantine'], true ); ?>>
+						<span class="rg-switch-slider"></span>
+						<strong><?php esc_html_e( 'Karantina Otomatis PHP di Folder Uploads (Disarankan)', 'wp-root-guard' ); ?></strong>
+					</label>
+					<p class="rg-field-desc">
+						<?php esc_html_e( 'Berkas PHP, PHAR, PHTML, dan ekstensi eksekusi lain di uploads akan dipindahkan ke karantina, bukan dihapus. Ini tetap melindungi server Nginx yang tidak membaca .htaccess.', 'wp-root-guard' ); ?>
+					</p>
+				</div>
+				<div class="rg-form-group" style="margin-top: 16px;">
 									<label class="rg-switch-label">
 										<input type="checkbox" name="enable_ip_blocker" value="1" <?php checked( $settings['enable_ip_blocker'], true ); ?>>
 										<span class="rg-switch-slider"></span>
-										<strong><?php esc_html_e( 'Aktifkan Blocker Akses Webshell & IP Penyerang (.htaccess)', 'wp-root-guard' ); ?></strong>
+					<strong><?php esc_html_e( 'Aktifkan Blocker Webshell & IP (Apache/.htaccess)', 'wp-root-guard' ); ?></strong>
 									</label>
 									<p class="rg-field-desc">
-										<?php esc_html_e( 'Saat diaktifkan, sistem akan otomatis mencegat percobaan eksekusi PHP di folder uploads dan query string berbahaya, serta memblokir IP penyerang di .htaccess. (Default: Nonaktif).', 'wp-root-guard' ); ?>
+						<?php esc_html_e( 'Saat diaktifkan, plugin mencegat request PHP berbahaya dan menyinkronkan blokir IP ke .htaccess. Pada Nginx, .htaccess tidak berlaku; gunakan karantina otomatis uploads atau konfigurasi Nginx.', 'wp-root-guard' ); ?>
 									</p>
 								</div>
 							</div>

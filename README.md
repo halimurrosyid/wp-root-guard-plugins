@@ -171,6 +171,6 @@
 
 ## Hak Cipta & Lisensi
 
-- Pembuat: **Mujaddid Halimurrosyid**
+- Pembuat: **PuTI Telkom University**
 - Situs Web: [ajidmujaddid.staff.telkomuniversity.ac.id](https://ajidmujaddid.staff.telkomuniversity.ac.id/)
 - Lisensi: GPL v2 atau yang lebih baru.

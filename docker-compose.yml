@@ -42,48 +42,12 @@ services:
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: wpuser
       WORDPRESS_DB_PASSWORD: wppass123!
-      # WP-Cron dipicu oleh worker internal di bawah, bukan oleh request web.
-      WORDPRESS_CONFIG_EXTRA: |
-        define( 'DISABLE_WP_CRON', true );
     volumes:
       - wp_data:/var/www/html
       # Mode upload ZIP: plugin dikelola oleh WordPress di dalam wp_data.
       # Untuk mode development source lokal, aktifkan bind mount berikut
       # dan jangan melakukan update plugin dari WordPress Admin.
       # - ./:/var/www/html/wp-content/plugins/wp-root-guard
-    networks:
-      - wp_network
-
-  # ===========================
-  # WP-Cron worker (local lab)
-  # ===========================
-  # Memanggil WordPress melalui DNS internal Docker. Ini menghindari
-  # kegagalan loopback ke localhost:50080 dari dalam container wordpress.
-  wp-cron:
-    image: curlimages/curl:8.10.1
-    container_name: wp_lab_cron
-    restart: unless-stopped
-    depends_on:
-      wordpress:
-        condition: service_started
-    networks:
-      - wp_network
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - 'while true; do curl -fsS "http://wordpress/wp-cron.php" >/dev/null || true; sleep 60; done'
-
-  # ===========================
-  # Adminer (manajemen DB ringan)
-  # ===========================
-  adminer:
-    image: adminer:latest
-    container_name: wp_lab_adminer
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "50081:8080"                              # 🔥 Port uncommon untuk Adminer
     networks:
       - wp_network
 
