@@ -39,6 +39,9 @@ class Cron {
 	 */
 	const PRUNE_HOOK = 'wp_root_guard_prune_ips';
 
+	/** Single-event continuation for an interrupted or deferred scan. */
+	const CONTINUE_HOOK = 'wp_root_guard_scan_continue';
+
 	/**
 	 * Nama option lock untuk fallback pemindaian berbasis traffic.
 	 */
@@ -52,7 +55,8 @@ class Cron {
 	public function init() {
 		self::register_schedules();
 		add_action( self::SCAN_HOOK, array( $this, 'run_background_scan' ) );
-		add_action( self::PRUNE_HOOK, array( __NAMESPACE__ . '\\Blocker', 'prune_expired_ips' ) );
+		add_action( self::PRUNE_HOOK, array( __CLASS__, 'run_prune_tasks' ) );
+		add_action( self::CONTINUE_HOOK, array( $this, 'run_scan_continuation' ) );
 		// Fallback dashboard-first: jika WP-Cron loopback tidak tersedia,
 		// request website tetap dapat menjalankan scan yang sudah jatuh tempo.
 		add_action( 'wp_loaded', array( __CLASS__, 'maybe_run_due_scan' ), 999 );
@@ -173,6 +177,12 @@ class Cron {
 		$interval_seconds = isset( $schedules[ $interval ]['interval'] ) ? (int) $schedules[ $interval ]['interval'] : 300;
 		$event = wp_get_scheduled_event( self::SCAN_HOOK );
 		$now = time();
+		$lock = new ScanLock();
+		$lock_state = $lock->get_state();
+		$batch_run = class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) ? ScanBatchRunner::get_active_run() : array();
+		$queue_state = ! empty( $batch_run ) ? $batch_run : ( class_exists( __NAMESPACE__ . '\\ScanQueue' ) ? ScanQueue::get_state() : array() );
+		$server_guard = class_exists( __NAMESPACE__ . '\\ServerGuard' ) ? ServerGuard::get_status() : array();
+		$quarantine = class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ? QuarantineStorage::resolve_directory() : array();
 
 		return array(
 			'hook'              => self::SCAN_HOOK,
@@ -185,7 +195,24 @@ class Cron {
 			'configuration_ok'  => (bool) ( $event && $event->schedule === $interval ),
 			'cron_disabled'     => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
 			'traffic_fallback'  => true,
+			'lock_active'       => is_array( $lock_state ) && ! $lock->is_stale( $lock_state ),
+			'lock_context'      => is_array( $lock_state ) && isset( $lock_state['context'] ) ? $lock_state['context'] : '',
+			'queue_state'       => is_array( $queue_state ) && isset( $queue_state['status'] ) ? $queue_state['status'] : 'idle',
+			'server_guard'      => is_array( $server_guard ) && isset( $server_guard['status'] ) ? $server_guard['status'] : 'unknown',
+			'server_guard_family' => is_array( $server_guard ) && isset( $server_guard['server_family'] ) ? $server_guard['server_family'] : 'unknown',
+			'quarantine_source' => is_array( $quarantine ) && isset( $quarantine['source'] ) ? $quarantine['source'] : 'none',
+			'quarantine_ready'  => is_array( $quarantine ) && isset( $quarantine['status'] ) && 'ready' === $quarantine['status'],
 		);
+	}
+
+	/** Run bounded maintenance associated with the hourly prune hook. */
+	public static function run_prune_tasks() {
+		if ( class_exists( __NAMESPACE__ . '\\Blocker' ) ) {
+			Blocker::prune_expired_ips();
+		}
+		if ( class_exists( __NAMESPACE__ . '\\ScanStore' ) ) {
+			ScanStore::cleanup_completed_runs( 7 );
+		}
 	}
 
 	/**
@@ -204,22 +231,21 @@ class Cron {
 			return;
 		}
 
+		$active = class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) ? ScanBatchRunner::get_active_run() : array();
+		$has_active_run = ! empty( $active );
+		if ( $has_active_run && ! empty( $active['next_retry_at'] ) && (int) $active['next_retry_at'] > time() ) {
+			return;
+		}
 		$event = wp_get_scheduled_event( self::SCAN_HOOK );
-		if ( ! $event || (int) $event->timestamp > time() ) {
-			return;
-		}
+		if ( ! $has_active_run && ( ! $event || (int) $event->timestamp > time() ) ) { return; }
+		if ( $has_active_run && get_transient( 'wp_root_guard_traffic_batch_throttle' ) ) { return; }
+		if ( $has_active_run ) { set_transient( 'wp_root_guard_traffic_batch_throttle', 1, 15 ); }
 
-		if ( ! self::acquire_traffic_scan_lock() ) {
-			return;
-		}
-
-		try {
-			$result = class_exists( __NAMESPACE__ . '\\Scanner' ) ? Scanner::perform_scan() : array();
-			$failed = is_array( $result ) && isset( $result['status'] ) && 'failed' === $result['status'];
-			self::advance_scan_event( $event, $failed ? 60 : null );
-		} finally {
-			self::release_traffic_scan_lock();
-		}
+		// Scanner owns the only global lock. A second traffic-only lock used to
+		// leave stale state after fatal errors and could suppress valid scans.
+		$result = class_exists( __NAMESPACE__ . '\\Scanner' ) ? Scanner::perform_scan( 'traffic' ) : array();
+		$failed = is_array( $result ) && isset( $result['status'] ) && 'failed' === $result['status'];
+		if ( $event && (int) $event->timestamp <= time() ) { self::advance_scan_event( $event, $failed ? 60 : null ); }
 	}
 
 	/**
@@ -258,6 +284,23 @@ class Cron {
 	 */
 	private static function release_traffic_scan_lock() {
 		delete_option( self::TRAFFIC_SCAN_LOCK_OPTION );
+	}
+
+	/** Schedule one bounded retry; duplicate events are never created. */
+	public static function schedule_scan_continuation( $delay = 30 ) {
+		if ( ! wp_next_scheduled( self::CONTINUE_HOOK ) ) {
+			wp_schedule_single_event( time() + max( 15, (int) $delay ), self::CONTINUE_HOOK, array(), true );
+		}
+	}
+
+	/** Continue a deferred run through the same global scanner lock. */
+	public function run_scan_continuation() {
+		if ( class_exists( __NAMESPACE__ . '\\Scanner' ) ) {
+			$result = Scanner::perform_scan( 'continuation' );
+			if ( is_array( $result ) && 'deferred' === ( $result['execution_state'] ?? '' ) ) {
+				self::schedule_scan_continuation( 60 );
+			}
+		}
 	}
 
 	/**
@@ -358,6 +401,7 @@ class Cron {
 			wp_unschedule_event( $prune_timestamp, self::PRUNE_HOOK );
 		}
 		wp_clear_scheduled_hook( self::PRUNE_HOOK );
+		wp_clear_scheduled_hook( self::CONTINUE_HOOK );
 	}
 
 	/**
@@ -375,6 +419,6 @@ class Cron {
 			return;
 		}
 
-		Scanner::perform_scan();
+		Scanner::perform_scan( 'cron' );
 	}
 }

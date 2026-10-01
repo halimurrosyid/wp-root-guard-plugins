@@ -448,8 +448,10 @@ class Blocker {
 				$new_content = ! empty( $block_rules ) ? $content . "\n\n" . $block_rules . "\n" : $content;
 			}
 
-			$written = file_put_contents( $htaccess_file, $new_content, LOCK_EX );
-			if ( false === $written ) {
+			$written = class_exists( __NAMESPACE__ . '\\AtomicWriter' )
+				? AtomicWriter::write( $htaccess_file, $new_content, 0644 )
+				: new \WP_Error( 'atomic_writer_missing', __( 'Atomic writer tidak tersedia.', 'wp-root-guard' ) );
+			if ( is_wp_error( $written ) ) {
 				Logger::log(
 					esc_html__( 'Gagal menulis .htaccess', 'wp-root-guard' ),
 					$htaccess_file,

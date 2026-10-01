@@ -211,6 +211,7 @@ if ( ! function_exists( 'wp_root_guard_uninstall_site' ) ) {
 			wp_unschedule_event( $timestamp_prune, 'wp_root_guard_prune_ips' );
 		}
 		wp_clear_scheduled_hook( 'wp_root_guard_prune_ips' );
+		wp_clear_scheduled_hook( 'wp_root_guard_scan_continue' );
 
 		// 2. Hapus seluruh opsi plugin dari tabel options.
 		$options = array(
@@ -227,11 +228,24 @@ if ( ! function_exists( 'wp_root_guard_uninstall_site' ) ) {
 			'wp_root_guard_active_core_threats',
 			'wp_root_guard_baseline_folders',
 			'wp_root_guard_baseline_files',
+			'wp_root_guard_scan_queue',
+			'wp_root_guard_batch_run',
+			'wp_root_guard_scan_lock',
+			'wp_root_guard_scan_state',
+			'wp_root_guard_server_guard',
+			'wp_root_guard_storage_schema',
 		);
 
 		foreach ( $options as $option_name ) {
 			delete_option( $option_name );
 		}
+
+		// Plugin-owned operational metadata only. Do not touch any WordPress
+		// core tables or external vault files outside the known upload fallback.
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wprg_scan_runs" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wprg_scan_findings" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wprg_scan_items" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}wprg_quarantine_items" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// 3. Hapus transients standar plugin via Transients API.
 		delete_transient( 'wp_root_guard_core_checksums' );

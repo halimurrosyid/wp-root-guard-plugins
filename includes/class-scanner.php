@@ -40,6 +40,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Scanner {
 
+	/** Scope errors collected during the current run. */
+	private static $scope_errors = array();
+
 	/**
 	 * Option yang menyimpan checkpoint eksekusi scan terakhir.
 	 */
@@ -98,8 +101,33 @@ class Scanner {
 	 *
 	 * @return array Hasil pemindaian berupa status proteksi dan daftar ancaman terdeteksi.
 	 */
-	public static function perform_scan() {
-		$run_id       = wp_generate_uuid4();
+	public static function perform_scan( $context = 'unknown' ) {
+		// P0.3 runner performs one resumable batch per invocation. The legacy
+		// monolithic implementation remains below only for backward-compatible
+		// helper methods until its removal in a later major release.
+		if ( class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) ) {
+			return ScanBatchRunner::run( $context );
+		}
+
+		$lock = new ScanLock();
+		$lock_state = $lock->acquire( $context );
+
+		if ( false === $lock_state ) {
+			return array(
+				'last_scan'        => '',
+				'status'           => 'deferred',
+				'security_status'  => ScanResult::SECURITY_PENDING,
+				'coverage_status'  => ScanResult::COVERAGE_DEGRADED,
+				'execution_state' => ScanResult::EXECUTION_DEFERRED,
+				'unknown_count'    => 0,
+				'unknown_folders'  => array(),
+				'error'            => esc_html__( 'Pemindaian ditunda karena scan lain masih berjalan.', 'wp-root-guard' ),
+			);
+		}
+
+		$run_id       = isset( $lock_state['run_id'] ) ? $lock_state['run_id'] : wp_generate_uuid4();
+		$queue_state  = class_exists( __NAMESPACE__ . '\\ScanQueue' ) ? ScanQueue::create_run( 'full', 0, 0, array( 'context' => $context ) ) : null;
+		$queue_token  = ( is_array( $queue_state ) && isset( $queue_state['fencing_token'] ) ) ? $queue_state['fencing_token'] : '';
 		$started_at   = microtime( true );
 		$started_gmt  = gmdate( 'Y-m-d H:i:s' );
 
@@ -117,7 +145,28 @@ class Scanner {
 		);
 
 		try {
-			$results = self::perform_scan_internal();
+			if ( $queue_token ) {
+				ScanQueue::heartbeat( $queue_token );
+			}
+			$results = self::perform_scan_internal( $run_id );
+			$is_deferred = ScanResult::EXECUTION_DEFERRED === ( $results['execution_state'] ?? '' );
+			if ( $is_deferred ) {
+				self::update_scan_state(
+					array(
+						'status'         => 'deferred',
+						'last_heartbeat' => gmdate( 'Y-m-d H:i:s' ),
+						'error'          => esc_html__( 'Pemindaian menunggu kondisi aman untuk dilanjutkan.', 'wp-root-guard' ),
+					)
+				);
+				if ( class_exists( __NAMESPACE__ . '\\Cron' ) ) {
+					Cron::schedule_scan_continuation();
+				}
+				$lock->release( $lock_state['run_id'], $lock_state['fencing_token'] );
+				if ( $queue_token ) {
+					ScanQueue::update_next_batch( $queue_token, array( 'status' => 'paused', 'errors' => array( 'deferred' ) ) );
+				}
+				return ScanResult::normalize( $results );
+			}
 			$completed_gmt = gmdate( 'Y-m-d H:i:s' );
 
 			self::update_scan_state(
@@ -132,6 +181,19 @@ class Scanner {
 					'error'            => '',
 				)
 			);
+
+			$results = ScanResult::normalize(
+				array_merge(
+					$results,
+					array(
+						'execution_state' => ScanResult::EXECUTION_COMPLETED,
+					)
+				)
+			);
+			$lock->release( $lock_state['run_id'], $lock_state['fencing_token'] );
+			if ( $queue_token ) {
+				ScanQueue::finish( $queue_token, 'completed', array( 'findings_summary' => array( 'threat_count' => isset( $results['unknown_count'] ) ? (int) $results['unknown_count'] : 0 ) ) );
+			}
 
 			return $results;
 		} catch ( \Throwable $exception ) {
@@ -155,9 +217,17 @@ class Scanner {
 				esc_html__( 'Error', 'wp-root-guard' )
 			);
 
+			$lock->release( $lock_state['run_id'], $lock_state['fencing_token'] );
+			if ( $queue_token ) {
+				ScanQueue::finish( $queue_token, 'failed', array( 'errors' => array( $error ) ) );
+			}
+
 			return array(
 				'last_scan'       => '',
 				'status'          => 'failed',
+				'security_status' => ScanResult::SECURITY_PENDING,
+				'coverage_status' => ScanResult::COVERAGE_FAILED,
+				'execution_state' => ScanResult::EXECUTION_FAILED,
 				'unknown_count'   => 0,
 				'unknown_folders' => array(),
 			);
@@ -170,7 +240,11 @@ class Scanner {
 	 *
 	 * @return array Hasil pemindaian.
 	 */
-	private static function perform_scan_internal() {
+	private static function perform_scan_internal( $run_id = '' ) {
+		$coverage_status = ScanResult::COVERAGE_COMPLETE;
+		$scope_errors     = array();
+		self::$scope_errors = array();
+
 		// 0. Maintenance Guard: Tunda pemindaian jika WordPress core update sedang berlangsung.
 		if ( self::is_core_update_in_progress() ) {
 			Logger::log(
@@ -180,17 +254,13 @@ class Scanner {
 			);
 			return array(
 				'last_scan'       => current_time( 'mysql' ),
-				'status'          => 'safe',
+				'status'          => 'degraded',
+				'security_status' => ScanResult::SECURITY_PENDING,
+				'coverage_status' => ScanResult::COVERAGE_DEGRADED,
+				'execution_state' => ScanResult::EXECUTION_DEFERRED,
 				'unknown_count'   => 0,
 				'unknown_folders' => array(),
 			);
-		}
-
-		// Pastikan baseline tersinkronisasi jika versi WordPress baru saja berubah.
-		global $wp_version;
-		$baseline_raw = Baseline::read_baseline();
-		if ( ! empty( $baseline_raw ) && isset( $baseline_raw['wp_version'] ) && ! empty( $wp_version ) && (string) $wp_version !== (string) $baseline_raw['wp_version'] ) {
-			Baseline::handle_core_update( (string) $wp_version, 'scanner_runtime_detection' );
 		}
 
 		$detection_time = self::get_wib_time();
@@ -208,6 +278,14 @@ class Scanner {
 
 		$user_whitelist   = Settings::get_user_whitelist();
 		$settings         = Settings::get_settings();
+		$auto_quarantine  = self::can_auto_quarantine( false );
+		$uploads_quarantine = self::can_auto_quarantine( true );
+		if ( ! empty( $settings['enable_auto_quarantine'] ) && ! $auto_quarantine ) {
+			$scope_errors[] = 'quarantine_storage_unavailable';
+		}
+		if ( ! empty( $settings['enable_uploads_auto_quarantine'] ) && ! $uploads_quarantine ) {
+			$scope_errors[] = 'uploads_quarantine_unverified';
+		}
 
 		// Gabungkan whitelist dan baseline untuk pengecekan.
 		$known_folders    = array_unique( array_merge( $baseline_folders, $default_folders, $user_whitelist ) );
@@ -232,7 +310,7 @@ class Scanner {
 
 				$status_text    = __( 'Unknown Folder', 'wp-root-guard' );
 
-				if ( $settings['enable_auto_quarantine'] ) {
+				if ( $settings['enable_auto_quarantine'] && $auto_quarantine ) {
 					$quarantine_name = self::quarantine_folder( $folder );
 					if ( false !== $quarantine_name ) {
 						$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
@@ -279,7 +357,7 @@ class Scanner {
 				$malware_indicator = self::scan_file_for_webshell( $file_path );
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Bersih (Bukan Webshell)', 'wp-root-guard' );
 
-				if ( $settings['enable_auto_quarantine'] ) {
+				if ( $settings['enable_auto_quarantine'] && $auto_quarantine ) {
 					$quarantine_name = self::quarantine_file( $file );
 					if ( false !== $quarantine_name ) {
 						$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
@@ -449,7 +527,7 @@ class Scanner {
 									$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Penyusupan Mencurigakan (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas Penyusup di Folder Core', 'wp-root-guard' );
 
 									// Karantina otomatis untuk berkas penyusup asing di folder core
-									if ( $settings['enable_auto_quarantine'] ) {
+					if ( $settings['enable_auto_quarantine'] && $auto_quarantine ) {
 										$quarantine_name = self::quarantine_core_file( $rel_path );
 										if ( false !== $quarantine_name ) {
 											$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
@@ -480,6 +558,14 @@ class Scanner {
 					}
 				}
 			}
+		} else {
+			$coverage_status = ScanResult::COVERAGE_DEGRADED;
+			$scope_errors[]   = 'core_checksums_unavailable';
+			Logger::log(
+				esc_html__( 'Verifikasi checksum core tidak tersedia; hasil scan berstatus degraded.', 'wp-root-guard' ),
+				'core_checksums',
+				esc_html__( 'Degraded', 'wp-root-guard' )
+			);
 		}
 
 		// ==========================================
@@ -487,6 +573,11 @@ class Scanner {
 		// ==========================================
 		if ( ! isset( $settings['enable_uploads_php_scan'] ) || $settings['enable_uploads_php_scan'] ) {
 			$uploads_php = self::scan_uploads_for_php_files();
+			if ( is_wp_error( $uploads_php ) ) {
+				$coverage_status = ScanResult::COVERAGE_DEGRADED;
+				$scope_errors[]   = 'uploads_scan_failed';
+				$uploads_php      = array();
+			}
 			foreach ( $uploads_php as $php_file ) {
 				$rel_path  = $php_file['name'];
 				$file_path = $php_file['path'];
@@ -504,7 +595,7 @@ class Scanner {
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Sangat Berbahaya (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas PHP di Folder Uploads', 'wp-root-guard' );
 
 					$quarantined = false;
-					if ( ! empty( $settings['enable_uploads_auto_quarantine'] ) || ! empty( $settings['enable_auto_quarantine'] ) ) {
+					if ( ( ! empty( $settings['enable_uploads_auto_quarantine'] ) || ! empty( $settings['enable_auto_quarantine'] ) ) && $uploads_quarantine ) {
 						$quarantine_name = self::quarantine_core_file( $rel_path );
 						if ( false !== $quarantine_name ) {
 							$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
@@ -543,9 +634,18 @@ class Scanner {
 		self::handle_threat_notifications( $threats );
 
 		// Siapkan data hasil scan.
+		$scope_errors = array_values( array_unique( array_merge( $scope_errors, self::$scope_errors ) ) );
+		if ( ! empty( $scope_errors ) ) {
+			$coverage_status = ScanResult::COVERAGE_DEGRADED;
+		}
+
 		$scan_results = array(
 			'last_scan'       => current_time( 'mysql' ),
-			'status'          => empty( $threats ) ? 'safe' : 'threat',
+			'status'          => empty( $threats ) ? ( ScanResult::COVERAGE_COMPLETE === $coverage_status ? 'safe' : 'degraded' ) : 'threat',
+			'security_status' => empty( $threats ) ? ScanResult::SECURITY_SAFE : ScanResult::SECURITY_THREAT,
+			'coverage_status' => $coverage_status,
+			'execution_state' => ScanResult::EXECUTION_COMPLETED,
+			'scope_errors'    => $scope_errors,
 			'unknown_count'   => count( $threats ),
 			'unknown_folders' => $threats,
 		);
@@ -553,6 +653,16 @@ class Scanner {
 		// Simpan hasil scan ke WordPress Options.
 		update_option( 'wp_root_guard_last_scan', $scan_results );
 		update_option( 'wp_root_guard_unknown_folders', $threats );
+
+		// Keep an audit-safe, deduplicated finding record for this run. Paths are
+		// hashed in the database; the dashboard continues using the legacy option.
+		if ( '' !== $run_id && class_exists( __NAMESPACE__ . '\\ScanStore' ) ) {
+			foreach ( $threats as $threat ) {
+				$path = is_array( $threat ) ? (string) ( $threat['path'] ?? $threat['name'] ?? '' ) : (string) $threat;
+				$type = is_array( $threat ) ? (string) ( $threat['type'] ?? 'unknown' ) : 'unknown';
+				ScanStore::save_finding( $run_id, 'full', $path, 'threat', array( 'type' => sanitize_text_field( $type ) ) );
+			}
+		}
 
 		// Log status scan selesai.
 		if ( empty( $threats ) ) {
@@ -602,6 +712,28 @@ class Scanner {
 	private static function update_scan_state( $state ) {
 		$current = self::get_scan_state();
 		update_option( self::SCAN_STATE_OPTION, array_merge( $current, $state ), false );
+	}
+
+	/**
+	 * Memastikan auto-quarantine hanya aktif bila storage dan execution guard aman.
+	 *
+	 * @param bool $uploads Apakah target berada di uploads.
+	 * @return bool
+	 */
+	private static function can_auto_quarantine( $uploads = false ) {
+		if ( ! class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ) {
+			return false;
+		}
+		$storage = QuarantineStorage::resolve_directory();
+		if ( 'ready' !== $storage['status'] ) {
+			return false;
+		}
+		if ( $uploads && 'uploads_fallback' === $storage['source'] ) {
+			if ( ! class_exists( __NAMESPACE__ . '\\ServerGuard' ) || 'verified' !== ServerGuard::get_status()['status'] ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -856,8 +988,31 @@ class Scanner {
 			);
 		}
 
-		// Timpa berkas lokal dengan berkas core resmi
-		if ( false !== @file_put_contents( $local_path, $content ) ) {
+		$checksums = self::get_core_checksums();
+		if ( ! is_array( $checksums ) || empty( $checksums[ $relative_path ] ) || ! hash_equals( strtolower( (string) $checksums[ $relative_path ] ), strtolower( md5( $content ) ) ) ) {
+			Logger::log(
+				esc_html__( 'Restore core ditolak karena checksum remote tidak cocok.', 'wp-root-guard' ),
+				$relative_path,
+				esc_html__( 'Checksum Failed', 'wp-root-guard' )
+			);
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Restore ditolak: checksum berkas remote tidak cocok dengan checksum resmi WordPress.', 'wp-root-guard' ),
+			);
+		}
+		if ( ! class_exists( __NAMESPACE__ . '\\QuarantineManager' ) || ! QuarantineManager::is_available_for_automatic_containment() ) {
+			return array(
+				'success' => false,
+				'message' => esc_html__( 'Restore otomatis ditolak karena vault karantina aman tidak tersedia untuk recovery kegagalan verifikasi.', 'wp-root-guard' ),
+			);
+		}
+
+		// Tulis temporary file lalu atomic rename agar file lama tetap utuh jika proses terputus.
+		$existing_mode = file_exists( $local_path ) ? (int) @fileperms( $local_path ) & 0777 : 0644;
+		$write_result = class_exists( __NAMESPACE__ . '\\AtomicWriter' )
+			? AtomicWriter::write( $local_path, $content, $existing_mode )
+			: new \WP_Error( 'atomic_writer_missing', __( 'Atomic writer tidak tersedia.', 'wp-root-guard' ) );
+		if ( true === $write_result && hash_equals( strtolower( (string) $checksums[ $relative_path ] ), strtolower( (string) @md5_file( $local_path ) ) ) ) {
 			Logger::log(
 				esc_html__( 'Berkas core WordPress dipulihkan ke asli', 'wp-root-guard' ),
 				$relative_path,
@@ -869,14 +1024,24 @@ class Scanner {
 				'message' => sprintf( /* translators: %1$s: path, %2$s: WP version */ esc_html__( 'Berkas %1$s BERHASIL dipulihkan ke versi asli resmi dari SVN WordPress.org (v%2$s)!', 'wp-root-guard' ), $relative_path, $wp_version ),
 			);
 		} else {
+			// The path was atomically replaced but cannot be proven trustworthy.
+			// Contain it immediately; never claim a successful restore.
+			$contained = true === $write_result ? QuarantineManager::quarantine( $local_path, $relative_path, 'file' ) : new \WP_Error( 'atomic_write_failed', __( 'Atomic write gagal sebelum target diganti.', 'wp-root-guard' ) );
+			$containment_status = is_wp_error( $contained ) ? $contained->get_error_code() : 'contained';
 			Logger::log(
-				esc_html__( 'Gagal menulis berkas core', 'wp-root-guard' ),
-				$relative_path . ' (Permission Denied)',
-				esc_html__( 'Failed', 'wp-root-guard' )
+				esc_html__( 'Restore core gagal verifikasi; artefak hasil tulis dikarantina', 'wp-root-guard' ),
+				$relative_path . ' (' . $containment_status . ')',
+				esc_html__( 'Restore Verification Failed', 'wp-root-guard' )
 			);
+			$last_scan = self::get_last_scan_results();
+			$last_scan['status'] = 'degraded';
+			$last_scan['security_status'] = ScanResult::SECURITY_PENDING;
+			$last_scan['coverage_status'] = ScanResult::COVERAGE_DEGRADED;
+			$last_scan['scope_errors'] = array_values( array_unique( array_merge( (array) ( $last_scan['scope_errors'] ?? array() ), array( 'core_restore_verification_failed' ) ) ) );
+			update_option( 'wp_root_guard_last_scan', $last_scan, false );
 			return array(
 				'success' => false,
-				'message' => sprintf( /* translators: %s: path */ esc_html__( 'Gagal menulis berkas %s. Izin akses tulis (File Permission / Write Access) ditolak oleh server.', 'wp-root-guard' ), $relative_path ),
+				'message' => sprintf( /* translators: %s: path */ esc_html__( 'Restore %s gagal diverifikasi; hasil tulis telah ditahan untuk investigasi.', 'wp-root-guard' ), $relative_path ),
 			);
 		}
 	}
@@ -1044,8 +1209,29 @@ class Scanner {
 		$abs_path  = ABSPATH . $rel_path;
 		$real_base = realpath( ABSPATH );
 		$real_path = realpath( $abs_path );
+		if ( ! $real_path ) {
+			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
+			if ( is_array( $quarantines ) ) {
+				foreach ( $quarantines as $item ) {
+					if ( isset( $item['quarantine_name'] ) && $item['quarantine_name'] === $rel_path ) {
+						$resolved = self::resolve_quarantine_item_path( $item, $rel_path );
+						if ( '' !== $resolved ) {
+							$real_path = realpath( $resolved );
+						}
+						break;
+					}
+				}
+			}
+		}
 
-		if ( ! $real_base || ! $real_path || 0 !== strpos( $real_path, $real_base ) || is_dir( $real_path ) ) {
+		$inside_webroot = $real_base && $real_path && ( 0 === strpos( $real_path, rtrim( $real_base, '/\\' ) . DIRECTORY_SEPARATOR ) || $real_path === $real_base );
+		$inside_vault = false;
+		if ( $real_path && class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ) {
+			$storage = QuarantineStorage::resolve_directory();
+			$inside_vault = ! empty( $storage['directory'] ) && QuarantineStorage::is_path_within( $real_path, $storage['directory'], false );
+		}
+
+		if ( ! $real_path || ( ! $inside_webroot && ! $inside_vault ) || is_dir( $real_path ) ) {
 			return array(
 				'success' => false,
 				'message' => esc_html__( 'Berkas tidak ditemukan atau path tidak valid.', 'wp-root-guard' ),
@@ -1111,35 +1297,43 @@ class Scanner {
 	 * @return string Path absolut folder karantina.
 	 */
 	public static function get_quarantine_dir() {
-		$quarantine_dir = str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard-quarantine/' );
-
-		if ( ! is_dir( $quarantine_dir ) ) {
-			@mkdir( $quarantine_dir, 0755, true );
+		$storage = QuarantineStorage::resolve_directory();
+		if ( 'ready' !== $storage['status'] || empty( $storage['directory'] ) ) {
+			return '';
 		}
 
-		// Buat berkas .htaccess pengunci di dalam folder karantina
-		$htaccess_file = $quarantine_dir . '.htaccess';
-		if ( ! file_exists( $htaccess_file ) ) {
-			$htaccess_content  = "<Files *>\n";
-			$htaccess_content .= "  <IfModule mod_authz_core.c>\n";
-			$htaccess_content .= "    Require all denied\n";
-			$htaccess_content .= "  </IfModule>\n";
-			$htaccess_content .= "  <IfModule !mod_authz_core.c>\n";
-			$htaccess_content .= "    Order deny,allow\n";
-			$htaccess_content .= "    Deny from all\n";
-			$htaccess_content .= "  </IfModule>\n";
-			$htaccess_content .= "</Files>\n";
+		return trailingslashit( $storage['directory'] );
+	}
 
-			@file_put_contents( $htaccess_file, $htaccess_content );
+	/**
+	 * Resolve metadata path only inside the current or legacy known vault.
+	 *
+	 * @param array  $item Metadata item.
+	 * @param string $name Quarantine item name.
+	 * @return string Safe absolute path or empty string.
+	 */
+	private static function resolve_quarantine_item_path( $item, $name ) {
+		$storage = class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ? QuarantineStorage::resolve_directory() : array();
+		$allowed = array();
+		if ( ! empty( $storage['directory'] ) ) {
+			$allowed[] = $storage['directory'];
+		}
+		$legacy = str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard-quarantine' );
+		$allowed[] = $legacy;
+
+		$candidate = isset( $item['quarantine_path'] ) ? (string) $item['quarantine_path'] : '';
+		if ( '' === $candidate ) {
+			$candidate = self::get_quarantine_dir() . ltrim( $name, '/\\' );
+		}
+		$candidate = str_replace( '\\', '/', $candidate );
+
+		foreach ( $allowed as $base ) {
+			if ( '' !== $base && QuarantineStorage::is_path_within( $candidate, $base, false ) ) {
+				return $candidate;
+			}
 		}
 
-		// Buat berkas index.html pembendung directory listing
-		$index_file = $quarantine_dir . 'index.html';
-		if ( ! file_exists( $index_file ) ) {
-			@file_put_contents( $index_file, '<!-- Isolated Quarantine Vault -->' );
-		}
-
-		return $quarantine_dir;
+		return '';
 	}
 
 	/**
@@ -1172,39 +1366,8 @@ class Scanner {
 			return false;
 		}
 
-		$original_path   = $real_path;
-		$quarantine_dir  = self::get_quarantine_dir();
-		$quarantine_name = '__quarantine_' . str_replace( '/', '_', $folder ) . '_' . time();
-		$quarantine_path = $quarantine_dir . $quarantine_name;
-
-		if ( @rename( $original_path, $quarantine_path ) ) {
-			$htaccess_content  = "<Files *>\n";
-			$htaccess_content .= "  <IfModule mod_authz_core.c>\n";
-			$htaccess_content .= "    Require all denied\n";
-			$htaccess_content .= "  </IfModule>\n";
-			$htaccess_content .= "  <IfModule !mod_authz_core.c>\n";
-			$htaccess_content .= "    Order deny,allow\n";
-			$htaccess_content .= "    Deny from all\n";
-			$htaccess_content .= "  </IfModule>\n";
-			$htaccess_content .= "</Files>\n";
-
-			@file_put_contents( $quarantine_path . '/.htaccess', $htaccess_content );
-
-			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
-			if ( ! is_array( $quarantines ) ) {
-				$quarantines = array();
-			}
-
-			$quarantines[] = array(
-				'type'            => 'folder',
-				'original_name'   => $folder,
-				'quarantine_name' => $quarantine_name,
-				'original_path'   => $original_path,
-				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => self::get_wib_time(),
-			);
-
-			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
+		$record = self::quarantine_validated_path( $real_path, $folder, 'folder' );
+		if ( is_array( $record ) ) {
 
 			Logger::log(
 				esc_html__( 'Folder berhasil dikarantina otomatis', 'wp-root-guard' ),
@@ -1212,7 +1375,7 @@ class Scanner {
 				esc_html__( 'Quarantined', 'wp-root-guard' )
 			);
 
-			return $quarantine_name;
+			return $record['quarantine_name'];
 		}
 
 		return false;
@@ -1252,27 +1415,8 @@ class Scanner {
 			return false;
 		}
 
-		$original_path   = $real_path;
-		$quarantine_dir  = self::get_quarantine_dir();
-		$quarantine_name = '__quarantine_' . str_replace( '/', '_', $filename ) . '_' . time();
-		$quarantine_path = $quarantine_dir . $quarantine_name;
-
-		if ( @rename( $original_path, $quarantine_path ) ) {
-			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
-			if ( ! is_array( $quarantines ) ) {
-				$quarantines = array();
-			}
-
-			$quarantines[] = array(
-				'type'            => 'file',
-				'original_name'   => $filename,
-				'quarantine_name' => $quarantine_name,
-				'original_path'   => $original_path,
-				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => self::get_wib_time(),
-			);
-
-			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
+		$record = self::quarantine_validated_path( $real_path, $filename, 'file' );
+		if ( is_array( $record ) ) {
 
 			Logger::log(
 				esc_html__( 'Berkas berhasil dikarantina otomatis', 'wp-root-guard' ),
@@ -1280,7 +1424,7 @@ class Scanner {
 				esc_html__( 'Quarantined', 'wp-root-guard' )
 			);
 
-			return $quarantine_name;
+			return $record['quarantine_name'];
 		}
 
 		return false;
@@ -1317,28 +1461,8 @@ class Scanner {
 			return false;
 		}
 
-		$original_path   = $real_path;
-		$clean_name      = str_replace( '/', '_', $rel_path );
-		$quarantine_dir  = self::get_quarantine_dir();
-		$quarantine_name = '__quarantine_' . $clean_name . '_' . time();
-		$quarantine_path = $quarantine_dir . $quarantine_name;
-
-		if ( @rename( $original_path, $quarantine_path ) ) {
-			$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
-			if ( ! is_array( $quarantines ) ) {
-				$quarantines = array();
-			}
-
-			$quarantines[] = array(
-				'type'            => 'file',
-				'original_name'   => $rel_path,
-				'quarantine_name' => $quarantine_name,
-				'original_path'   => $original_path,
-				'quarantine_path' => $quarantine_path,
-				'quarantine_time' => self::get_wib_time(),
-			);
-
-			update_option( 'wp_root_guard_quarantined_folders', $quarantines );
+		$record = self::quarantine_validated_path( $real_path, $rel_path, 'file' );
+		if ( is_array( $record ) ) {
 
 			Logger::log(
 				esc_html__( 'Berkas penyusup core berhasil dikarantina otomatis', 'wp-root-guard' ),
@@ -1346,10 +1470,46 @@ class Scanner {
 				esc_html__( 'Quarantined', 'wp-root-guard' )
 			);
 
-			return $quarantine_name;
+			return $record['quarantine_name'];
 		}
 
 		return false;
+	}
+
+	/**
+	 * Commit a validated target to the vault and retain legacy display metadata.
+	 * The database record is authoritative; the option remains for existing
+	 * dashboard rendering until its UI is migrated to quarantine IDs.
+	 *
+	 * @param string $path Canonical source path.
+	 * @param string $name Original relative name.
+	 * @param string $type file or folder.
+	 * @return array|false
+	 */
+	private static function quarantine_validated_path( $path, $name, $type ) {
+		if ( ! class_exists( __NAMESPACE__ . '\\QuarantineManager' ) ) {
+			return false;
+		}
+		$record = QuarantineManager::quarantine( $path, $name, $type );
+		if ( is_wp_error( $record ) || ! is_array( $record ) ) {
+			return false;
+		}
+
+		$quarantines = get_option( 'wp_root_guard_quarantined_folders', array() );
+		$quarantines = is_array( $quarantines ) ? $quarantines : array();
+		$quarantines[] = array(
+			'id'              => $record['id'],
+			'type'            => $record['type'],
+			'original_name'   => $name,
+			'quarantine_name' => $record['quarantine_name'],
+			'original_path'   => $record['original_path'],
+			'quarantine_path' => $record['quarantine_path'],
+			'quarantine_time' => self::get_wib_time(),
+			'sha256'          => $record['sha256'],
+			'storage_id'      => hash( 'sha256', $record['storage_directory'] ),
+		);
+		update_option( 'wp_root_guard_quarantined_folders', $quarantines, false );
+		return $record;
 	}
 
 	/**
@@ -1386,7 +1546,10 @@ class Scanner {
 				if ( is_array( $last_scan ) ) {
 					$last_scan['unknown_count']   = count( $unknown_folders );
 					$last_scan['unknown_folders'] = $unknown_folders;
-					$last_scan['status']          = empty( $unknown_folders ) ? 'safe' : 'threat';
+					$last_scan['status']          = empty( $unknown_folders ) ? 'pending' : 'threat';
+					$last_scan['security_status'] = empty( $unknown_folders ) ? ScanResult::SECURITY_PENDING : ScanResult::SECURITY_THREAT;
+					$last_scan['coverage_status'] = empty( $unknown_folders ) ? ScanResult::COVERAGE_DEGRADED : ( isset( $last_scan['coverage_status'] ) ? $last_scan['coverage_status'] : ScanResult::COVERAGE_DEGRADED );
+					$last_scan['execution_state'] = ScanResult::EXECUTION_DEFERRED;
 					update_option( 'wp_root_guard_last_scan', $last_scan );
 				}
 			}
@@ -1450,17 +1613,16 @@ class Scanner {
 		}
 
 		$item            = $quarantines[ $found_key ];
-		$quarantine_path = isset( $item['quarantine_path'] ) ? $item['quarantine_path'] : '';
-		if ( empty( $quarantine_path ) || ! file_exists( $quarantine_path ) ) {
-			$quarantine_dir  = self::get_quarantine_dir();
-			if ( file_exists( $quarantine_dir . $quarantine_name ) ) {
-				$quarantine_path = $quarantine_dir . $quarantine_name;
-			} else {
-				$quarantine_path = ABSPATH . $quarantine_name;
-			}
+		$quarantine_path = self::resolve_quarantine_item_path( $item, $quarantine_name );
+		if ( '' === $quarantine_path ) {
+			return false;
 		}
 		$original_path   = ABSPATH . $item['original_name'];
 		$type            = isset( $item['type'] ) ? $item['type'] : 'folder';
+		$original_name   = str_replace( '\\', '/', (string) $item['original_name'] );
+		if ( '' === $original_name || false !== strpos( $original_name, '..' ) || 0 === strpos( $original_name, '/' ) || false !== strpos( $original_name, '//' ) ) {
+			return false;
+		}
 
 		if ( 'folder' === $type ) {
 			if ( ! is_dir( $quarantine_path ) ) {
@@ -1475,6 +1637,10 @@ class Scanner {
 			if ( ! file_exists( $quarantine_path ) ) {
 				unset( $quarantines[ $found_key ] );
 				update_option( 'wp_root_guard_quarantined_folders', array_values( $quarantines ) );
+				return false;
+			}
+			if ( ! empty( $item['sha256'] ) && ! hash_equals( (string) $item['sha256'], (string) @hash_file( 'sha256', $quarantine_path ) ) ) {
+				Logger::log( esc_html__( 'Restore ditolak karena checksum item karantina berubah', 'wp-root-guard' ), $original_name, esc_html__( 'Checksum Failed', 'wp-root-guard' ) );
 				return false;
 			}
 		}
@@ -1538,14 +1704,9 @@ class Scanner {
 		}
 
 		$item            = $quarantines[ $found_key ];
-		$quarantine_path = isset( $item['quarantine_path'] ) ? $item['quarantine_path'] : '';
-		if ( empty( $quarantine_path ) || ! file_exists( $quarantine_path ) ) {
-			$quarantine_dir  = self::get_quarantine_dir();
-			if ( file_exists( $quarantine_dir . $quarantine_name ) ) {
-				$quarantine_path = $quarantine_dir . $quarantine_name;
-			} else {
-				$quarantine_path = ABSPATH . $quarantine_name;
-			}
+		$quarantine_path = self::resolve_quarantine_item_path( $item, $quarantine_name );
+		if ( '' === $quarantine_path ) {
+			return false;
 		}
 		$type            = isset( $item['type'] ) ? $item['type'] : 'folder';
 
@@ -1605,6 +1766,16 @@ class Scanner {
 	 *
 	 * @param array $threats Daftar ancaman terdeteksi saat ini.
 	 */
+	/**
+	 * Send deduplicated notifications after a batch run has fully finalized.
+	 *
+	 * @param array $threats Final finding list.
+	 * @return void
+	 */
+	public static function notify_scan_findings( $threats ) {
+		self::handle_threat_notifications( is_array( $threats ) ? $threats : array() );
+	}
+
 	private static function handle_threat_notifications( $threats ) {
 		$settings = Settings::get_settings();
 
@@ -1845,13 +2016,16 @@ class Scanner {
 	public static function get_last_scan_results() {
 		$default = array(
 			'last_scan'       => '',
-			'status'          => 'safe',
+			'status'          => 'pending',
+			'security_status' => ScanResult::SECURITY_PENDING,
+			'coverage_status' => ScanResult::COVERAGE_DEGRADED,
+			'execution_state' => ScanResult::EXECUTION_DEFERRED,
 			'unknown_count'   => 0,
 			'unknown_folders' => array(),
 		);
 
 		$results = get_option( 'wp_root_guard_last_scan', $default );
-		return is_array( $results ) ? $results : $default;
+		return ScanResult::normalize( is_array( $results ) ? $results : $default );
 	}
 
 	/**
@@ -1881,7 +2055,8 @@ class Scanner {
 		$user_whitelist = Settings::get_user_whitelist();
 
 		// Path folder karantina dan folder data baseline plugin — dieksklusi dari pemindaian agar tidak false positive
-		$quarantine_path = str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard-quarantine' );
+		$storage = class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ? QuarantineStorage::resolve_directory() : array();
+		$quarantine_path = isset( $storage['directory'] ) ? str_replace( '\\', '/', $storage['directory'] ) : '';
 		$baseline_path   = class_exists( __NAMESPACE__ . '\\Baseline' )
 			? str_replace( '\\', '/', Baseline::get_baseline_dir() )
 			: str_replace( '\\', '/', WP_CONTENT_DIR . '/uploads/wp-root-guard' );
@@ -1916,7 +2091,8 @@ class Scanner {
 				}
 			}
 		} catch ( \Exception $e ) {
-			// Abaikan error eksepsi iterator
+			self::$scope_errors[] = 'uploads_iterator:' . sanitize_key( $e->getMessage() );
+			return new \WP_Error( 'uploads_iterator_failed', $e->getMessage() );
 		}
 
 		return $php_files;

@@ -56,6 +56,10 @@
 			$btn.prop('disabled', true).text(scanningText);
 
 			var inlineCard = document.getElementById('rg-scan-inline-card');
+			// The old visual queue enumerated the entire filesystem in the browser
+			// flow before scanning. It defeats bounded batches and can time out on
+			// large sites, so use the server checkpoint response as the source of truth.
+			inlineCard = null;
 			var statusCard = document.getElementById('rg-status-card');
 			var summaryCard = document.getElementById('rg-summary-card');
 			var actionsBar = document.getElementById('rg-actions-bar');
@@ -104,6 +108,11 @@
 									security: wpRootGuard.nonce
 								}, function (scanResponse) {
 									if (scanResponse.success) {
+										if (scanResponse.data && scanResponse.data.results && scanResponse.data.results.execution_state !== 'completed') {
+											if (currentItemText) currentItemText.innerText = '⏳ Batch selesai; melanjutkan checkpoint...';
+											setTimeout(function () { WPRootGuard.runScan(); }, 250);
+											return;
+										}
 										if (percentText) percentText.innerText = '100%';
 										if (progressBar) progressBar.style.width = '100%';
 										if (currentItemText) currentItemText.innerText = '✅ Pemindaian Selesai! Memuat ulang halaman...';
@@ -139,6 +148,10 @@
 				})
 					.done(function (response) {
 						if (response.success) {
+							if (response.data && response.data.results && response.data.results.execution_state !== 'completed') {
+								setTimeout(function () { WPRootGuard.runScan(); }, 250);
+								return;
+							}
 							if ($progress.length) {
 								$progress.find('.rg-progress-fill').css('width', '100%');
 							}

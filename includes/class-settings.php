@@ -203,6 +203,15 @@ class Settings {
 
 		// Validasi trusted_proxies selalu berupa array IP yang valid.
 		$merged['trusted_proxies'] = isset( $merged['trusted_proxies'] ) ? self::sanitize_trusted_proxies( $merged['trusted_proxies'] ) : array();
+		if ( class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ) {
+			$storage = QuarantineStorage::resolve_directory();
+			if ( 'ready' !== $storage['status'] ) {
+				$merged['enable_auto_quarantine'] = false;
+				$merged['enable_uploads_auto_quarantine'] = false;
+			} elseif ( 'uploads_fallback' === $storage['source'] && class_exists( __NAMESPACE__ . '\\ServerGuard' ) && 'verified' !== ServerGuard::get_status()['status'] ) {
+				$merged['enable_uploads_auto_quarantine'] = false;
+			}
+		}
 
 		return $merged;
 	}
@@ -270,6 +279,17 @@ class Settings {
 
 		if ( isset( $new_settings['trusted_proxies'] ) ) {
 			$settings['trusted_proxies'] = self::sanitize_trusted_proxies( $new_settings['trusted_proxies'] );
+		}
+
+		// Fail closed: auto-quarantine tidak boleh aktif tanpa vault yang writable.
+		if ( class_exists( __NAMESPACE__ . '\\QuarantineStorage' ) ) {
+			$storage = QuarantineStorage::resolve_directory();
+			if ( 'ready' !== $storage['status'] ) {
+				$settings['enable_auto_quarantine'] = false;
+				$settings['enable_uploads_auto_quarantine'] = false;
+			} elseif ( 'uploads_fallback' === $storage['source'] && class_exists( __NAMESPACE__ . '\\ServerGuard' ) && 'verified' !== ServerGuard::get_status()['status'] ) {
+				$settings['enable_uploads_auto_quarantine'] = false;
+			}
 		}
 
 		return update_option( 'wp_root_guard_settings', $settings );

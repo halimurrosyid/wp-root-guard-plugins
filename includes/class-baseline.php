@@ -35,6 +35,9 @@ class Baseline {
 	 */
 	const BASELINE_FILENAME = 'baseline.json';
 
+	/** Candidate baseline awaiting explicit administrator approval. */
+	const PENDING_FILENAME = 'baseline-pending.json';
+
 	/**
 	 * Nama direktori penyimpanan baseline di dalam direktori uploads WordPress.
 	 */
@@ -89,7 +92,9 @@ class Baseline {
 		// Tambahkan berkas index.php kosong demi keamanan (directory listing prevention).
 		$index_file = $dir . '/index.php';
 		if ( is_dir( $dir ) && ! file_exists( $index_file ) ) {
-			@file_put_contents( $index_file, "<?php\n// Silence is golden.\n" );
+			if ( class_exists( __NAMESPACE__ . '\\AtomicWriter' ) ) {
+				AtomicWriter::write( $index_file, "<?php\n// Silence is golden.\n", 0644 );
+			}
 		}
 
 		return $dir;
@@ -112,6 +117,12 @@ class Baseline {
 	 */
 	public static function get_baseline_path() {
 		return self::get_baseline_file();
+	}
+
+	/** @return string Pending baseline path. */
+	public static function get_pending_baseline_path() {
+		$dir = self::get_baseline_dir();
+		return ! empty( $dir ) ? $dir . '/' . self::PENDING_FILENAME : '';
 	}
 
 	/**
@@ -171,12 +182,11 @@ class Baseline {
 	 * @return bool True jika baseline berhasil disinkronkan.
 	 */
 	public static function handle_core_update( $new_version = '', $source = 'hook' ) {
-		if ( empty( $new_version ) ) {
-			$new_version = self::get_current_wp_version();
-		}
-
-		$result = self::sync_baseline_version( $new_version, $source );
-		return is_array( $result );
+		// A core update changes official checksums, not the trusted root
+		// filesystem baseline. Rebuilding here could bless a compromised root.
+		self::invalidate_checksums_cache();
+		Logger::log( __( 'Core WordPress diperbarui; baseline root tidak diubah dan menunggu review administrator.', 'wp-root-guard' ), sanitize_text_field( $source ), 'Info' );
+		return true;
 	}
 
 	/**
@@ -185,10 +195,76 @@ class Baseline {
 	 * @return bool True jika baseline berhasil ditulis, false jika gagal.
 	 */
 	public static function create_baseline() {
+		return is_array( self::generate_pending_baseline( 'manual' ) );
+	}
+
+	/** Build a signed candidate only; it cannot be used as an active baseline. */
+	public static function generate_pending_baseline( $run_id = '' ) {
 		self::clear_memory_cache();
-		$current_version = self::get_current_wp_version();
-		$synced          = self::sync_baseline_version( $current_version, 'manual_create' );
-		return is_array( $synced );
+		$data = array(
+			'created_at' => current_time( 'mysql' ),
+			'wp_version' => self::get_current_wp_version(),
+			'folders'    => self::scan_root_folders(),
+			'files'      => self::scan_root_files(),
+			'run_id'     => sanitize_text_field( $run_id ),
+			'kind'       => 'pending',
+		);
+		$data['hmac'] = self::sign( $data );
+		$json = wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+		$written = AtomicWriter::write( self::get_pending_baseline_path(), $json, 0600 );
+		if ( is_wp_error( $written ) ) {
+			Logger::log( __( 'Gagal menulis kandidat baseline', 'wp-root-guard' ), $written->get_error_code(), 'Error' );
+			return false;
+		}
+		Logger::log( __( 'Kandidat baseline dibuat dan menunggu persetujuan administrator', 'wp-root-guard' ), '-', 'Pending Approval' );
+		return $data;
+	}
+
+	/** Read and HMAC-verify pending candidate. */
+	public static function read_pending_baseline() {
+		$path = self::get_pending_baseline_path();
+		$content = $path ? @file_get_contents( $path ) : false;
+		$data = is_string( $content ) ? json_decode( $content, true ) : array();
+		return is_array( $data ) && 'pending' === ( $data['kind'] ?? '' ) && self::verify( $data ) ? $data : array();
+	}
+
+	/** Freshly scan and atomically promote a candidate approved by an admin. */
+	public static function approve_pending_baseline() {
+		$pending = self::read_pending_baseline();
+		if ( empty( $pending ) ) {
+			return new \WP_Error( 'baseline_pending_invalid', __( 'Kandidat baseline tidak tersedia atau integritasnya gagal.', 'wp-root-guard' ) );
+		}
+		if ( ! class_exists( __NAMESPACE__ . '\\Scanner' ) ) {
+			return new \WP_Error( 'baseline_scanner_missing', __( 'Scanner tidak tersedia untuk verifikasi baseline.', 'wp-root-guard' ) );
+		}
+		$result = Scanner::perform_scan( 'baseline_approval' );
+		if ( 'safe' !== ( $result['security_status'] ?? '' ) || 'complete' !== ( $result['coverage_status'] ?? '' ) || 'completed' !== ( $result['execution_state'] ?? '' ) || ! empty( $result['unknown_count'] ) ) {
+			return new \WP_Error( 'baseline_scan_not_clean', __( 'Persetujuan ditolak: scan verifikasi tidak lengkap atau masih memiliki temuan.', 'wp-root-guard' ) );
+		}
+		$current = array(
+			'folders' => self::scan_root_folders(),
+			'files'   => self::scan_root_files(),
+		);
+		if ( wp_json_encode( $pending['folders'] ) !== wp_json_encode( $current['folders'] ) || wp_json_encode( $pending['files'] ) !== wp_json_encode( $current['files'] ) ) {
+			return new \WP_Error( 'baseline_candidate_stale', __( 'Kandidat baseline berubah sejak dibuat; buat kandidat baru setelah review.', 'wp-root-guard' ) );
+		}
+		$active = array(
+			'created_at' => current_time( 'mysql' ),
+			'wp_version' => self::get_current_wp_version(),
+			'folders'    => $current['folders'],
+			'files'      => $current['files'],
+			'approved_run_id' => sanitize_text_field( $pending['run_id'] ?? '' ),
+			'approved_by' => get_current_user_id(),
+		);
+		$active['hmac'] = self::sign( $active );
+		$written = AtomicWriter::write( self::get_baseline_path(), wp_json_encode( $active, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ), 0600 );
+		if ( is_wp_error( $written ) ) {
+			return $written;
+		}
+		@unlink( self::get_pending_baseline_path() );
+		self::$memory_cache = $active;
+		Logger::log( __( 'Baseline root disetujui administrator setelah scan verifikasi bersih', 'wp-root-guard' ), '-', 'Approved' );
+		return true;
 	}
 
 	/**
@@ -226,20 +302,6 @@ class Baseline {
 			return array();
 		}
 
-		// 2. Fallback Version Detection: Cek perbedaan versi WordPress core.
-		if ( ! $skip_fallback ) {
-			$current_version = self::get_current_wp_version();
-			$stored_version  = isset( $data['wp_version'] ) ? (string) $data['wp_version'] : '';
-
-			if ( ! empty( $current_version ) && ! empty( $stored_version ) && $current_version !== $stored_version ) {
-				$synced_data = self::sync_baseline_version( $current_version, 'fallback_version_detection', $stored_version );
-				if ( is_array( $synced_data ) && ! empty( $synced_data ) ) {
-					self::$memory_cache = $synced_data;
-					return $synced_data;
-				}
-			}
-		}
-
 		self::$memory_cache = $data;
 		return $data;
 	}
@@ -254,6 +316,11 @@ class Baseline {
 	 * @return array|false Data snapshot baseline baru, atau false jika gagal.
 	 */
 	public static function sync_baseline_version( $new_version, $source = 'hook', $old_version = '' ) {
+		// Core version changes must never rewrite the trusted root inventory.
+		if ( 'manual_create' !== $source ) {
+			self::invalidate_checksums_cache();
+			return self::read_baseline( true );
+		}
 		$lock_file = self::get_lock_file();
 		if ( empty( $lock_file ) ) {
 			return false;
@@ -300,6 +367,7 @@ class Baseline {
 				'wp_version' => $new_version,
 				'folders'    => $folders,
 				'files'      => $files,
+				'kind'       => 'pending',
 			);
 
 			// Tanda tangani dengan HMAC-SHA256
@@ -309,10 +377,12 @@ class Baseline {
 				? wp_json_encode( $new_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES )
 				: json_encode( $new_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
 
-			$target_file = self::get_baseline_file();
-			$written     = @file_put_contents( $target_file, $json_data, LOCK_EX );
+			$target_file = self::get_pending_baseline_path();
+			$written     = class_exists( __NAMESPACE__ . '\\AtomicWriter' )
+				? AtomicWriter::write( $target_file, $json_data, 0600 )
+				: new \WP_Error( 'atomic_writer_missing', __( 'Atomic writer tidak tersedia.', 'wp-root-guard' ) );
 
-			if ( false === $written ) {
+			if ( false === $written || is_wp_error( $written ) ) {
 				Logger::log(
 					sprintf(
 						/* translators: %s: versi wordpress */
@@ -504,10 +574,10 @@ class Baseline {
 	public static function delete_baseline() {
 		self::clear_memory_cache();
 		$file_path = self::get_baseline_file();
-		if ( ! empty( $file_path ) && file_exists( $file_path ) ) {
-			return @unlink( $file_path );
-		}
-		return true;
+		$pending_path = self::get_pending_baseline_path();
+		$active_deleted = empty( $file_path ) || ! file_exists( $file_path ) || @unlink( $file_path );
+		$pending_deleted = empty( $pending_path ) || ! file_exists( $pending_path ) || @unlink( $pending_path );
+		return $active_deleted && $pending_deleted;
 	}
 
 	/**
