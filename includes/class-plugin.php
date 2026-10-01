@@ -72,6 +72,12 @@ class Plugin {
 	 * Menjalankan plugin dengan mendaftarkan semua hooks ke WordPress.
 	 */
 	public function run() {
+		// Lightweight, idempotent schema migration for upgrades where the
+		// activation hook is not executed again.
+		if ( class_exists( __NAMESPACE__ . '\\ScanStore' ) ) {
+			ScanStore::ensure_schema();
+		}
+
 		add_action( 'init', array( $this, 'load_textdomain' ) );
 
 		// ==========================================

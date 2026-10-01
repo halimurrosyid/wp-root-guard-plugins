@@ -36,6 +36,12 @@ class Activator {
 	 * @return void
 	 */
 	public static function activate() {
+		// Operational scan and quarantine metadata must exist before the first
+		// activation scan starts. Failure is handled fail-closed by the scanner.
+		if ( class_exists( __NAMESPACE__ . '\\ScanStore' ) ) {
+			ScanStore::ensure_schema( true );
+		}
+
 		// 1. Simpan atau perbarui versi plugin di database.
 		$version = defined( 'WP_ROOT_GUARD_VERSION' ) ? WP_ROOT_GUARD_VERSION : '1.0.0';
 		update_option( 'wp_root_guard_version', $version, false );
@@ -45,24 +51,15 @@ class Activator {
 			Logger::log( esc_html__( 'Plugin diaktifkan', 'wp-root-guard' ), '-', esc_html__( 'Active', 'wp-root-guard' ) );
 		}
 
-		// 3. Buat baseline folder jika belum ada file baseline.
-		if ( class_exists( __NAMESPACE__ . '\\Baseline' ) ) {
-			if ( ! file_exists( Baseline::get_baseline_path() ) ) {
-				Baseline::create_baseline();
-				if ( class_exists( __NAMESPACE__ . '\\Logger' ) ) {
-					Logger::log( esc_html__( 'Baseline awal berhasil dibuat', 'wp-root-guard' ), '-', esc_html__( 'Success', 'wp-root-guard' ) );
-				}
-			}
-		}
-
-		// 4. Daftarkan dan jadwalkan event cron pemindaian otomatis dan prune IP.
+		// 3. Daftarkan dan jadwalkan event cron pemindaian otomatis dan prune IP.
 		if ( class_exists( __NAMESPACE__ . '\\Cron' ) ) {
 			Cron::schedule_event();
 		}
 
-		// 5. Jalankan pemindaian pertama secara langsung jika kelas scanner tersedia.
+		// 4. Jalankan verifikasi awal. Baseline dibuat oleh scanner hanya setelah
+		// seluruh scope critical selesai dan tidak ada threat yang belum ditinjau.
 		if ( class_exists( __NAMESPACE__ . '\\Scanner' ) ) {
-			Scanner::perform_scan();
+			Scanner::perform_scan( 'activation' );
 		}
 	}
 }

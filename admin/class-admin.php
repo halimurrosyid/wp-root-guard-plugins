@@ -13,6 +13,7 @@ use WPRootGuard\Scanner;
 use WPRootGuard\Logger;
 use WPRootGuard\Cron;
 use WPRootGuard\Blocker;
+use WPRootGuard\ServerGuard;
 
 // Mencegah akses langsung.
 if ( ! defined( 'ABSPATH' ) ) {
@@ -248,14 +249,27 @@ class Admin {
 
 		switch ( $action ) {
 			case 'scan_now':
-				$scan_result = Scanner::perform_scan();
+				$scan_result = Scanner::perform_scan( 'admin' );
 				wp_safe_redirect( add_query_arg( 'message', ( isset( $scan_result['status'] ) && 'failed' === $scan_result['status'] ) ? 'scan_failed' : 'scanned', $redirect_url ) );
 				exit;
 
 			case 'rebuild_baseline':
-				Baseline::rebuild_baseline();
-				Scanner::perform_scan();
-				wp_safe_redirect( add_query_arg( 'message', 'rebuilt', $redirect_url ) );
+				$scan_result = Scanner::perform_scan( 'baseline_candidate' );
+				if ( 'completed' !== ( $scan_result['execution_state'] ?? '' ) ) {
+					wp_safe_redirect( add_query_arg( 'message', 'baseline_scan_started', $redirect_url ) );
+					exit;
+				}
+				$scan_state = Scanner::get_scan_state();
+				if ( 'safe' === ( $scan_result['security_status'] ?? '' ) && 'complete' === ( $scan_result['coverage_status'] ?? '' ) && 'completed' === ( $scan_result['execution_state'] ?? '' ) && empty( $scan_result['unknown_count'] ) && Baseline::generate_pending_baseline( $scan_state['run_id'] ?? '' ) ) {
+					wp_safe_redirect( add_query_arg( 'message', 'baseline_pending', $redirect_url ) );
+				} else {
+					wp_safe_redirect( add_query_arg( 'message', 'baseline_candidate_failed', $redirect_url ) );
+				}
+				exit;
+
+			case 'approve_baseline':
+				$approved = Baseline::approve_pending_baseline();
+				wp_safe_redirect( add_query_arg( 'message', is_wp_error( $approved ) ? 'baseline_approval_failed' : 'baseline_approved', $redirect_url ) );
 				exit;
 
 			case 'reset_baseline':
@@ -275,7 +289,7 @@ class Admin {
 						$folder,
 						esc_html__( 'Trusted', 'wp-root-guard' )
 					);
-					Scanner::perform_scan();
+					Scanner::perform_scan( 'admin' );
 					wp_safe_redirect( add_query_arg( 'message', 'trusted', $redirect_url ) );
 					exit;
 				}
@@ -290,7 +304,7 @@ class Admin {
 						$folder,
 						esc_html__( 'Untrusted', 'wp-root-guard' )
 					);
-					Scanner::perform_scan();
+					Scanner::perform_scan( 'admin' );
 					wp_safe_redirect( add_query_arg( 'message', 'untrusted', $redirect_url ) );
 					exit;
 				}
@@ -306,7 +320,7 @@ class Admin {
 					}
 
 					if ( $success ) {
-						Scanner::perform_scan();
+						Scanner::perform_scan( 'admin' );
 						wp_safe_redirect( add_query_arg( 'message', 'quarantined', $redirect_url ) );
 					} else {
 						wp_safe_redirect( add_query_arg( 'message', 'quarantine_failed', $redirect_url ) );
@@ -320,7 +334,7 @@ class Admin {
 				if ( ! empty( $file ) ) {
 					$success = Scanner::delete_file_directly( $file );
 					if ( $success ) {
-						Scanner::perform_scan();
+						Scanner::perform_scan( 'admin' );
 						wp_safe_redirect( add_query_arg( 'message', 'file_deleted', $redirect_url ) );
 					} else {
 						wp_safe_redirect( add_query_arg( 'message', 'delete_failed', $redirect_url ) );
@@ -334,7 +348,7 @@ class Admin {
 				if ( ! empty( $file ) ) {
 					$result = Scanner::restore_core_file( $file );
 					if ( is_array( $result ) && ! empty( $result['success'] ) ) {
-						Scanner::perform_scan();
+						Scanner::perform_scan( 'admin' );
 						wp_safe_redirect( add_query_arg( array(
 							'message' => 'core_fixed',
 							'file'    => urlencode( $file ),
@@ -414,7 +428,7 @@ class Admin {
 						}
 					}
 
-					Scanner::perform_scan();
+					Scanner::perform_scan( 'admin' );
 
 					if ( 'bulk_fix_core' === $action_type ) {
 						if ( $failed_count > 0 && ! empty( $failed_reasons ) ) {
@@ -465,6 +479,20 @@ class Admin {
 				}
 				exit;
 
+			case 'install_server_guard':
+				$guard = ServerGuard::install_apache_uploads_guard();
+				$code = ( 'configured' === $guard['status'] ) ? 'server_guard_configured' : 'server_guard_failed';
+				Logger::log( esc_html__( 'Konfigurasi uploads execution guard diperbarui', 'wp-root-guard' ), $guard['status'], $guard['status'] );
+				wp_safe_redirect( add_query_arg( 'message', $code, $redirect_url ) );
+				exit;
+
+			case 'verify_server_guard':
+				$guard = ServerGuard::verify_uploads_guard();
+				$code = ( 'verified' === $guard['status'] ) ? 'server_guard_verified' : 'server_guard_failed';
+				Logger::log( esc_html__( 'Verifikasi uploads execution guard dijalankan', 'wp-root-guard' ), $guard['status'], $guard['status'] );
+				wp_safe_redirect( add_query_arg( 'message', $code, $redirect_url ) );
+				exit;
+
 			case 'test_telegram':
 				$token   = isset( $_POST['telegram_bot_token'] ) ? sanitize_text_field( $_POST['telegram_bot_token'] ) : '';
 				$chat_id = isset( $_POST['telegram_chat_id'] ) ? sanitize_text_field( $_POST['telegram_chat_id'] ) : '';
@@ -505,7 +533,7 @@ class Admin {
 				if ( ! empty( $folder ) ) {
 					$success = Scanner::restore_quarantined_folder( $folder );
 					if ( $success ) {
-						Scanner::perform_scan();
+						Scanner::perform_scan( 'admin' );
 						wp_safe_redirect( add_query_arg( 'message', 'restored', $redirect_url ) );
 					} else {
 						wp_safe_redirect( add_query_arg( 'message', 'restore_failed', $redirect_url ) );
@@ -519,7 +547,7 @@ class Admin {
 				if ( ! empty( $folder ) ) {
 					$success = Scanner::delete_quarantined_folder_permanently( $folder );
 					if ( $success ) {
-						Scanner::perform_scan();
+						Scanner::perform_scan( 'admin' );
 						wp_safe_redirect( add_query_arg( 'message', 'deleted_permanently', $redirect_url ) );
 					} else {
 						wp_safe_redirect( add_query_arg( 'message', 'delete_failed', $redirect_url ) );
@@ -640,20 +668,21 @@ class Admin {
 
 		// Rate Limiting: batasi pemindaian maksimal 1x setiap 20 detik per pengguna
 		$rate_key = 'wprg_scan_rate_' . get_current_user_id();
-		if ( get_transient( $rate_key ) ) {
+		$active_run = get_option( \WPRootGuard\ScanBatchRunner::RUN_OPTION, array() );
+		if ( ! ( is_array( $active_run ) && 'running' === ( $active_run['status'] ?? '' ) ) && get_transient( $rate_key ) ) {
 			wp_send_json_error( array( 'message' => esc_html__( 'Terlalu cepat. Harap tunggu 20 detik sebelum memindai ulang.', 'wp-root-guard' ) ), 429 );
 			return;
 		}
-		set_transient( $rate_key, 1, 20 );
+		if ( ! ( is_array( $active_run ) && 'running' === ( $active_run['status'] ?? '' ) ) ) { set_transient( $rate_key, 1, 20 ); }
 
-		$results = Scanner::perform_scan();
+		$results = Scanner::perform_scan( 'ajax' );
 
 		if ( isset( $results['status'] ) && 'failed' === $results['status'] ) {
 			wp_send_json_error( array( 'message' => esc_html__( 'Pemindaian gagal. Periksa log aktivitas.', 'wp-root-guard' ) ), 500 );
 		}
 
 		wp_send_json_success( array(
-			'message' => esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ),
+			'message' => ( 'completed' === ( $results['execution_state'] ?? '' ) ) ? esc_html__( 'Pemindaian selesai.', 'wp-root-guard' ) : esc_html__( 'Batch pemindaian diproses; melanjutkan scan.', 'wp-root-guard' ),
 			'results' => $results,
 		) );
 	}
@@ -707,9 +736,13 @@ class Admin {
 		$user_whitelist  = Settings::get_user_whitelist();
 		$baseline_list   = Baseline::get_baseline_folders();
 		$baseline_files  = Baseline::get_baseline_files();
+		$pending_baseline = Baseline::read_pending_baseline();
 		$logs            = Logger::get_logs();
 		$scan_state      = Scanner::get_scan_state();
 		$schedule_status = Cron::get_schedule_status();
+		$dashboard_status = class_exists( '\\WPRootGuard\\ScanResult' ) ? \WPRootGuard\ScanResult::dashboard_status( $results ) : ( isset( $results['status'] ) ? $results['status'] : 'pending' );
+		$coverage_status  = isset( $results['coverage_status'] ) ? $results['coverage_status'] : 'degraded';
+		$guard_status     = isset( $schedule_status['server_guard'] ) ? $schedule_status['server_guard'] : 'unverified';
 
 		// Hitung data ringkasan (Summary)
 		$protected_count   = count( $baseline_list ) + count( $baseline_files ) + count( $user_whitelist );
@@ -740,7 +773,10 @@ class Admin {
 			$scheduler_status = 'running';
 		}
 
-		$protection_status_ok = 'safe' === $results['status'] && in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true );
+		$protection_status_ok = 'safe' === $dashboard_status
+			&& 'complete' === $coverage_status
+			&& 'verified' === $guard_status
+			&& in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true );
 		$scheduler_labels = array(
 			'healthy'  => esc_html__( 'Sehat', 'wp-root-guard' ),
 			'running'  => esc_html__( 'Sedang berjalan', 'wp-root-guard' ),
@@ -764,7 +800,26 @@ class Admin {
 				$notice_text  = esc_html__( 'Pemindaian gagal. Periksa status checkpoint dan log aktivitas untuk detailnya.', 'wp-root-guard' );
 				break;
 			case 'rebuilt':
-				$notice_text = esc_html__( 'Baseline folder & berkas berhasil dibangun ulang.', 'wp-root-guard' );
+				$notice_text = esc_html__( 'Kandidat baseline berhasil dibuat.', 'wp-root-guard' );
+				break;
+			case 'baseline_pending':
+				$notice_class = 'notice-warning';
+				$notice_text = esc_html__( 'Kandidat baseline dibuat. Tinjau lalu setujui untuk mengaktifkannya.', 'wp-root-guard' );
+				break;
+			case 'baseline_scan_started':
+				$notice_class = 'notice-warning';
+				$notice_text = esc_html__( 'Scan verifikasi untuk kandidat baseline sedang berjalan. Kandidat dibuat otomatis setelah scan lengkap dan bersih.', 'wp-root-guard' );
+				break;
+			case 'baseline_candidate_failed':
+				$notice_class = 'notice-error';
+				$notice_text = esc_html__( 'Kandidat baseline tidak dibuat karena scan belum lengkap atau masih memiliki temuan.', 'wp-root-guard' );
+				break;
+			case 'baseline_approved':
+				$notice_text = esc_html__( 'Baseline aktif disetujui setelah scan verifikasi bersih.', 'wp-root-guard' );
+				break;
+			case 'baseline_approval_failed':
+				$notice_class = 'notice-error';
+				$notice_text = esc_html__( 'Persetujuan baseline ditolak. Kandidat stale, tidak valid, atau scan verifikasi tidak bersih.', 'wp-root-guard' );
 				break;
 			case 'reset':
 				$notice_text = esc_html__( 'Baseline berhasil direset. Silakan bangun ulang baseline baru.', 'wp-root-guard' );
@@ -985,14 +1040,14 @@ class Admin {
 						</div>
 						<div class="rg-card-body text-center">
 							<div class="rg-status-badge">
-								<?php if ( 'safe' !== $results['status'] ) : ?>
+								<?php if ( 'threat' === $dashboard_status ) : ?>
 									<span class="rg-icon-large">⚠️</span>
 									<span class="rg-status-text text-danger"><?php esc_html_e( 'BAHAYA', 'wp-root-guard' ); ?></span>
 									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman berkas/folder asing atau modifikasi core aktif!', 'wp-root-guard' ); ?></p>
-								<?php elseif ( ! $protection_status_ok ) : ?>
+								<?php elseif ( ! $protection_status_ok || 'safe' !== $dashboard_status ) : ?>
 									<span class="rg-icon-large">⏱️</span>
 									<span class="rg-status-text text-danger"><?php esc_html_e( 'PERLU PERHATIAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Hasil scan terakhir bersih, tetapi scheduler belum membuktikan scan berkala berjalan normal.', 'wp-root-guard' ); ?></p>
+									<p class="rg-status-desc"><?php esc_html_e( 'Scan belum membuktikan seluruh scope, scheduler, dan server guard berjalan normal.', 'wp-root-guard' ); ?></p>
 								<?php else : ?>
 									<span class="rg-icon-large">🛡️</span>
 									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
@@ -1033,8 +1088,8 @@ class Admin {
 						<th><?php esc_html_e( 'Pemindaian Berikutnya:', 'wp-root-guard' ); ?></th>
 						<td><?php echo esc_html( $schedule_status['is_due'] ? ( ! empty( $schedule_status['traffic_fallback'] ) ? esc_html__( 'Menunggu request website', 'wp-root-guard' ) : esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) ) : $next_scan_time ); ?></td>
 					</tr>
-					<tr>
-						<th><?php esc_html_e( 'Status Scheduler:', 'wp-root-guard' ); ?></th>
+								<tr>
+									<th><?php esc_html_e( 'Status Scheduler:', 'wp-root-guard' ); ?></th>
 						<td>
 							<strong class="<?php echo 'healthy' === $scheduler_status || 'running' === $scheduler_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( $scheduler_label ); ?></strong>
 							<?php if ( ! in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true ) ) : ?>
@@ -1084,9 +1139,14 @@ class Admin {
 					<button type="button" id="rg-scan-now" class="button button-primary button-large" onclick="startDynamicScan()">
 						<?php esc_html_e( 'Pindai Sekarang (Scan Now)', 'wp-root-guard' ); ?>
 					</button>
-					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membangun ulang baseline? Ini akan merekam kondisi folder dan berkas root saat ini sebagai standar aman yang baru.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
-						<?php esc_html_e( 'Bangun Ulang Baseline (Rebuild Baseline)', 'wp-root-guard' ); ?>
+					<button type="button" class="button button-secondary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Scan bersih akan membuat kandidat baseline. Kandidat tidak aktif sebelum Anda menyetujuinya.', 'wp-root-guard' ) ); ?>')) { submitRgAction('rebuild_baseline'); }">
+						<?php esc_html_e( 'Buat Kandidat Baseline', 'wp-root-guard' ); ?>
 					</button>
+					<?php if ( ! empty( $pending_baseline ) ) : ?>
+						<button type="button" class="button button-primary button-large" onclick="if(confirm('<?php echo esc_js( __( 'Persetujuan akan menjalankan scan verifikasi baru. Baseline hanya aktif bila hasilnya tetap bersih dan lengkap.', 'wp-root-guard' ) ); ?>')) { submitRgAction('approve_baseline'); }">
+							<?php esc_html_e( 'Setujui Kandidat Baseline', 'wp-root-guard' ); ?>
+						</button>
+					<?php endif; ?>
 					<button type="button" class="button button-link-delete" onclick="if(confirm('<?php echo esc_js( __( 'Peringatan: Reset Baseline akan menghapus data referensi aman dan hasil scan. Anda harus membangun ulang setelahnya. Lanjutkan?', 'wp-root-guard' ) ); ?>')) { submitRgAction('reset_baseline'); }">
 						<?php esc_html_e( 'Reset Baseline', 'wp-root-guard' ); ?>
 					</button>
@@ -1171,6 +1231,14 @@ class Admin {
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
 										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
+								<tr>
+									<th><?php esc_html_e( 'Coverage Scan:', 'wp-root-guard' ); ?></th>
+									<td><strong class="<?php echo 'complete' === $coverage_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( ucfirst( $coverage_status ) ); ?></strong></td>
+								</tr>
+								<tr>
+									<th><?php esc_html_e( 'Uploads Execution Guard:', 'wp-root-guard' ); ?></th>
+									<td><strong class="<?php echo 'verified' === $guard_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( ucfirst( $guard_status ) ); ?></strong></td>
+								</tr>
 								</thead>
 								<tbody>
 									<?php foreach ( $active_folders as $folder ) : ?>
@@ -1786,6 +1854,15 @@ class Admin {
 					<p class="rg-field-desc">
 						<?php esc_html_e( 'Berkas PHP, PHAR, PHTML, dan ekstensi eksekusi lain di uploads akan dipindahkan ke karantina, bukan dihapus. Ini tetap melindungi server Nginx yang tidak membaca .htaccess.', 'wp-root-guard' ); ?>
 					</p>
+				</div>
+				<div class="rg-form-group" style="margin-top: 16px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px;">
+					<strong><?php esc_html_e( 'Uploads Execution Guard:', 'wp-root-guard' ); ?></strong>
+					<span class="<?php echo 'verified' === $guard_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( ucfirst( $guard_status ) ); ?></span>
+					<p class="rg-field-desc"><?php esc_html_e( 'Pada Apache, plugin dapat memasang rule .htaccess dan menguji HTTP. Pada Nginx/IIS, administrator server tetap harus memasang rule secara manual.', 'wp-root-guard' ); ?></p>
+					<?php if ( 'apache' === ( isset( $schedule_status['server_guard_family'] ) ? $schedule_status['server_guard_family'] : '' ) ) : ?>
+						<a class="button button-secondary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'index.php?page=wp-root-guard&tab=settings&rg_action=install_server_guard' ), 'wp_root_guard_admin_action', '_wpnonce' ) ); ?>"><?php esc_html_e( 'Pasang Rule Apache', 'wp-root-guard' ); ?></a>
+					<?php endif; ?>
+					<a class="button button-secondary" href="<?php echo esc_url( wp_nonce_url( admin_url( 'index.php?page=wp-root-guard&tab=settings&rg_action=verify_server_guard' ), 'wp_root_guard_admin_action', '_wpnonce' ) ); ?>"><?php esc_html_e( 'Uji Proteksi HTTP', 'wp-root-guard' ); ?></a>
 				</div>
 				<div class="rg-form-group" style="margin-top: 16px;">
 									<label class="rg-switch-label">

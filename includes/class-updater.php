@@ -216,7 +216,7 @@ class Updater {
 		$description_html .= '<li><strong>Attacker IP Blocker &amp; .htaccess Access Guard</strong>: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di <code>.htaccess</code>.</li>';
 		$description_html .= '<li><strong>Inspektur Kode Berkas (Secure Code Inspector)</strong>: Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).</li>';
 		$description_html .= '<li><strong>Notifikasi Instan Real-Time</strong>: Pengiriman notifikasi peringatan instan ke Telegram Bot API dan Email Administrator.</li>';
-		$description_html .= '<li><strong>Vault Karantina Terisolasi Khusus</strong>: Menyimpan seluruh berkas terisolasi di <code>wp-content/uploads/wp-root-guard-quarantine/</code> yang dikunci ketat dengan <code>.htaccess</code>.</li>';
+		$description_html .= '<li><strong>Vault Karantina Terisolasi Khusus</strong>: Mengutamakan direktori site-specific di luar webroot dan hanya memakai fallback uploads setelah execution guard terverifikasi.</li>';
 		$description_html .= '</ul>';
 
 		$installation_html  = '<ol>';

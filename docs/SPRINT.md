@@ -128,6 +128,320 @@ Memperkuat fitur keamanan yang sudah ada agar lebih robust, aman untuk situs bes
 
 **Pengembangan:** tambahkan manifest/checksum untuk plugin/theme WordPress.org dan baseline approval untuk kode premium/custom; audit user, cron, option, permission, ownership, serta indikator redirect/database injection.
 
+## Deep-Dive Addendum: Defence in Depth Webshell
+
+Bagian ini mencatat hasil audit lebih mendalam terhadap engine deteksi yang berjalan saat ini. Kesimpulan audit: WP Root Guard saat ini adalah **baseline/anomaly scanner untuk root, core, dan uploads**, bukan scanner perilaku webshell menyeluruh. Deteksi webshell masih bergantung pada cakupan direktori dan signature regex sederhana.
+
+### 17. Model Eksekusi Engine Saat Ini
+
+Alur aktual secara konseptual adalah:
+
+```text
+WP-Cron / traffic request / scan manual
+        -> Scanner::perform_scan()
+        -> root level + core checksum + uploads PHP
+        -> regex signature sederhana
+        -> quarantine / log / notifikasi
+```
+
+Implikasinya:
+
+- Jika sebuah file tidak termasuk scope scanner, file tersebut tidak pernah sampai ke tahap analisis kode.
+- Jika signature tidak cocok secara literal, file dapat dilaporkan bersih walaupun memiliki perilaku berbahaya.
+- Jika sebagian scope gagal dipindai, hasil akhir masih dapat terlihat sebagai `safe`.
+- Quarantine dan notifikasi bekerja setelah deteksi; keduanya bukan pengganti kontrol pencegahan eksekusi di web server.
+
+### 18. Blindspot Obfuscated Webshell
+
+Implementasi `Scanner::scan_file_for_webshell()` pada `includes/class-scanner.php` menggunakan pencocokan regex terhadap konten mentah. Signature saat ini mencakup fungsi seperti `eval()`, `base64_decode()`, `system()`, `shell_exec()`, `gzinflate()`, dan beberapa nama webshell yang dikenal.
+
+Keterbatasan:
+
+- Tidak ada PHP tokenizer atau AST.
+- Tidak ada analisis konteks antara kode, komentar, dan string.
+- Tidak ada deteksi variable function atau callback dinamis.
+- Tidak ada normalisasi string concatenation.
+- Tidak ada decoding aman untuk `chr()`, `pack()`, `hex2bin()`, URL encoding, ROT13, atau payload gzip/zlib.
+- Tidak ada deteksi payload base64/hex berlapis.
+- Tidak ada deteksi dynamic `include`/`require` dan stream wrapper seperti `php://input` atau `data://`.
+- Hanya ekstensi `php`, `htaccess`, `html`, dan `txt` yang dianalisis oleh signature scanner.
+- File lebih besar dari 1 MB dilewati oleh `scan_file_for_webshell()` tanpa menjadi coverage gap.
+- File `.phtml`, `.inc`, `.phar`, extensionless, atau polyglot dapat terdeteksi sebagai file uploads berdasarkan ekstensi, tetapi belum tentu dianalisis sebagai webshell.
+- Regex mentah dapat menghasilkan false positive pada komentar, dokumentasi, atau kode benign yang menyebut nama fungsi berbahaya.
+
+Pola evasion yang wajib masuk test corpus:
+
+1. Penyusunan nama fungsi dari beberapa string.
+2. Pemanggilan fungsi melalui variabel atau callback.
+3. Payload yang dibentuk melalui `chr()`, `pack()`, `hex2bin()`, `strrev()`, array join, atau fungsi transformasi lain.
+4. Payload terkompresi atau terenkripsi ringan dengan decoding bertingkat.
+5. Penggunaan superglobal tidak langsung melalui variable variable atau `filter_input()`.
+6. Kode loader di file kecil yang mengambil payload dari database, request body, atau remote endpoint.
+7. Kode PHP yang disembunyikan di ekstensi media, file template, SVG, HTML, atau file polyglot.
+
+**Solusi arsitektur:** buat `ObfuscationAnalyzer` terpisah dengan tokenizer/AST, normalisasi terbatas, safe decoder ber-batas waktu/ukuran/kedalaman, entropy analysis, dan risk scoring. Hasil decoding tidak boleh dieksekusi.
+
+### 19. Blindspot Plugin Typosquatting dan Plugin Palsu
+
+Belum ada pemeriksaan terhadap inventaris plugin, slug resmi, `Text Domain`, `Plugin URI`, `Update URI`, atau hash package plugin. Akibatnya plugin seperti berikut dapat luput:
+
+```text
+wp-content/plugins/akimset/
+wp-content/plugins/akimset/akimset.php
+Plugin Name: Akismet
+```
+
+Header plugin tidak dapat dijadikan bukti keaslian karena header dapat dipalsukan.
+
+Rencana `Plugin Auditor`:
+
+- Enumerasi plugin aktif dan nonaktif melalui `get_plugins()`.
+- Bandingkan folder lokal, basename, slug, nama, text domain, dan URI.
+- Gunakan WordPress.org Plugin API untuk query metadata resmi berdasarkan slug atau nama. Referensi: <https://developer.wordpress.org/reference/functions/plugins_api/>.
+- Cache hasil positif dan negatif agar audit tidak membebani setiap request.
+- Bedakan plugin resmi, plugin premium/custom, fork, unknown, dan suspicious identity.
+- Simpan manifest SHA-256 untuk file plugin setelah approval.
+- Tandai file sebagai `Modified After Approval` bila path sama tetapi hash berubah.
+- Jangan melakukan auto-quarantine hanya karena fuzzy similarity; gunakan confidence score dan persetujuan admin untuk plugin/theme aktif.
+
+Status dashboard yang disarankan:
+
+```text
+Verified Official
+Verified Custom/Premium
+Modified After Baseline
+Suspicious Plugin Identity
+Unknown / Unverified
+```
+
+WordPress.org API hanya memberikan metadata/repository information dan bukan bukti cryptographic bahwa seluruh file lokal identik dengan package resmi. Untuk assurance lebih tinggi tetap diperlukan verifikasi package atau manifest yang dipercaya.
+
+### 20. Cakupan File dan Persistence yang Belum Lengkap
+
+Baseline filesystem saat ini hanya memindai root secara non-rekursif. Scanner juga memeriksa core dan ekstensi executable tertentu di `uploads`, tetapi belum menjadi inventory seluruh webroot.
+
+Scope prioritas:
+
+```text
+wp-admin/
+wp-includes/
+wp-content/plugins/
+wp-content/themes/
+wp-content/mu-plugins/
+wp-content/advanced-cache.php
+wp-content/object-cache.php
+wp-content/db.php
+wp-content/uploads/
+.htaccess
+.user.ini
+wp-config.php
+```
+
+Persistence database yang perlu diaudit:
+
+- administrator atau user baru;
+- perubahan role dan capability;
+- scheduled cron event asing;
+- autoloaded option berisi payload;
+- redirect injection;
+- widget/post/page SEO spam;
+- REST endpoint atau AJAX handler asing;
+- URL remote mencurigakan pada option atau metadata;
+- perubahan permission, ownership, dan executable bit.
+
+`wp-config.php` tidak diverifikasi oleh Core Checksums API. Perubahannya hanya dapat tertangkap oleh baseline root yang valid dan belum dibangun setelah kompromi. Karena itu file konfigurasi perlu diperlakukan sebagai scope khusus dengan redaction pada inspector.
+
+### 21. False-Safe dan Coverage Transparency
+
+Saat checksum API gagal atau circuit breaker aktif, `get_core_checksums()` dapat mengembalikan `false` dan pemeriksaan core tidak dijalankan. Error iterator filesystem juga masih dapat diabaikan. Namun hasil scan dapat tetap menjadi `safe` bila tidak ada temuan lain.
+
+Kontrak status wajib:
+
+```text
+safe     = seluruh scope aktif selesai diverifikasi tanpa error kritis
+threat   = ancaman ditemukan
+degraded = sebagian scope gagal, dilewati, atau belum diverifikasi
+failed   = scan gagal total
+```
+
+Dashboard wajib mencatat:
+
+- scope yang selesai;
+- scope yang dilewati;
+- file di atas size limit;
+- permission denied;
+- symlink yang ditemukan;
+- checksum API failure;
+- jumlah file yang belum dianalisis;
+- error dan retry berikutnya;
+- scan ID, waktu mulai, heartbeat, dan waktu selesai.
+
+Tidak boleh menampilkan status `safe` hanya karena daftar ancaman kosong.
+
+### 22. Baseline dan Trust Boundary
+
+Baseline HMAC melindungi integritas `baseline.json`, tetapi tidak menjamin bahwa isi baseline awal memang bersih. Jika situs telah terinfeksi sebelum plugin diaktifkan atau sebelum rebuild, artefak malware dapat ikut dipercaya.
+
+Risiko tambahan:
+
+- baseline root menggunakan MD5;
+- trust/whitelist berbasis path, bukan path plus hash;
+- perubahan konten pada file trusted dapat tidak memicu alert;
+- database dan WordPress salts berada dalam trust boundary yang sama;
+- Core update tidak boleh mempercayai ulang seluruh perubahan root secara otomatis.
+
+Model trust yang disarankan:
+
+```text
+path + SHA-256 + owner + permission + approved_at + approved_by + source
+```
+
+Trust baru berlaku terhadap fingerprint yang disetujui. Jika hash berubah, status harus kembali menjadi `Modified After Trust` dan memicu notifikasi.
+
+### 23. Quarantine dan Server-Level Enforcement
+
+Blocker berjalan pada lifecycle WordPress `init`. Request langsung ke file PHP di `uploads` dapat ditangani oleh Apache/Nginx sebelum WordPress memuat plugin. Oleh sebab itu deteksi plugin tidak menjamin pencegahan eksekusi.
+
+Defense in depth yang diperlukan:
+
+1. Deny execution rule pada `uploads` di level web server.
+2. Vault karantina di luar document root jika memungkinkan.
+3. `.htaccess` hanya sebagai adapter Apache.
+4. Konfigurasi Nginx dan IIS sebagai adapter terpisah.
+5. Self-test dari dashboard untuk memastikan request script ditolak.
+6. Fallback `copy -> verify hash -> delete` jika `rename()` lintas filesystem gagal.
+7. Backup, evidence metadata, rollback, dan verifikasi bahwa file benar-benar tidak dapat diakses publik.
+
+Plugin dapat membuat generator aturan dan memandu admin, tetapi tidak dapat secara universal mengubah konfigurasi Nginx/shared hosting tanpa akses server.
+
+### 24. Scheduler dan Scan Lock
+
+WP-Cron bukan daemon. Event dapat terdaftar tetapi tidak dieksekusi sampai ada request yang memicu WP-Cron. Traffic fallback membantu situs yang menerima traffic, tetapi tidak menjamin scan pada situs sepi dan dapat menjalankan scan berat di request pengunjung.
+
+Kekurangan operasional:
+
+- scan cron, traffic, AJAX, dan manual belum memakai satu global lock;
+- dua jalur dapat menjalankan scan bersamaan;
+- belum ada resumable batch scanner untuk timeout;
+- scan dapat memperlambat request foreground;
+- tidak ada missed-run history yang cukup rinci;
+- tidak ada mekanisme prioritas untuk incident scan.
+
+Target:
+
+- global lock database untuk semua jalur scan;
+- queue/checkpoint per scope;
+- bounded batch per request;
+- heartbeat dan stale-run recovery;
+- dashboard menampilkan `last_attempt`, `last_success`, `next_due`, `missed_count`, dan `coverage`;
+- manual scan dapat memprioritaskan scope kritis tanpa membuat scan penuh bertumpuk.
+
+Status implementasi P0.3 (1 Oktober 2026):
+
+- setiap invokasi scanner memproses maksimal 100 item atau 5 detik;
+- item, claim token, cursor direktori, scope, heartbeat, dan temuan disimpan pada tabel plugin; run aktif dipulihkan bila option cache hilang;
+- claim stale dikembalikan ke antrean dan continuation WP-Cron dijadwalkan; traffic fallback melanjutkan checkpoint pada request berikutnya;
+- notifikasi dan auto-quarantine diproses sesudah seluruh scope pemindaian selesai, bukan pada batch parsial;
+- detail run terminal dibersihkan oleh hook prune setelah 7 hari.
+
+Keterbatasan yang tetap harus diuji di lab: direktori datar yang sangat besar masih bergantung pada `scandir()` PHP dan perlu stress test pada shared hosting; tanpa traffic maupun external cron, continuation WP-Cron tetap tidak dapat berjalan sendiri karena WordPress bukan daemon.
+
+### 25. Notifikasi dan Bukti Forensik
+
+Identifier ancaman sudah menggunakan hash isi file untuk membedakan perubahan pada path yang sama. Namun state delivery masih global: jika salah satu channel berhasil, seluruh ancaman dapat dianggap sudah diberitahukan walaupun channel lain gagal.
+
+Perbaikan:
+
+- delivery state per channel dan per event;
+- retry queue dengan exponential backoff dan batas percobaan;
+- response provider dan HTTP status dicatat;
+- event ID, scan ID, fingerprint, first seen, last seen, dan action history;
+- notifikasi untuk threat baru, hash berubah, threat muncul kembali, quarantine gagal, dan coverage degraded;
+- redaction untuk path/credential sensitif;
+- log forensic terpisah dari Options API yang mudah tertimpa oleh log scan berulang.
+
+### 26. Defence in Depth Target Architecture
+
+```text
+Layer 0  Web server deny-execution dan WAF/configuration guard
+Layer 1  Inventory seluruh executable, loader, symlink, permission, dan ownership
+Layer 2  Provenance: core checksum, plugin/theme identity, package/manifest hash
+Layer 3  Static analysis: tokenizer/AST, safe decoding, entropy, risk scoring
+Layer 4  Persistence audit: users, cron, options, redirects, REST/AJAX, content spam
+Layer 5  Runtime/traffic signal: request anomaly, upload event, failed access, IP evidence
+Layer 6  Containment: dry-run, confidence threshold, quarantine, backup, rollback
+Layer 7  Notification/forensics: per-channel delivery state, evidence, audit trail
+Layer 8  Scheduler health: checkpoint, lock, retry, degraded coverage, stale-run recovery
+```
+
+Kebijakan tindakan berdasarkan confidence:
+
+- **High confidence + uploads executable:** quarantine otomatis setelah hash/evidence disimpan.
+- **High confidence + unknown core injection:** quarantine dengan backup dan verifikasi.
+- **Modified active plugin/theme:** alert critical, snapshot, dan approval admin; jangan langsung memindahkan file aktif tanpa rollback.
+- **Suspicious identity/obfuscation score sedang:** detect-only dan review manual.
+- **Unknown/unverified karena API gagal:** status `degraded`, bukan `safe` dan bukan auto-delete.
+
+### 27. Prioritas Implementasi Hasil Deep Dive
+
+#### P0 — sebelum production
+
+1. Status `degraded/failed` dan coverage report.
+2. Global scan lock untuk semua trigger.
+3. Batch/resumable scanner.
+4. Server-level uploads/vault execution guard.
+5. Vault di luar webroot atau deny rule tervalidasi.
+6. Checksum-verified atomic restore dengan backup/rollback.
+7. Pemisahan baseline root dan core update.
+8. Canonical path helper dengan boundary direktori yang ketat.
+9. Inspector allowlist dan redaction secret.
+
+#### P1 — menutup blindspot utama
+
+1. `Plugin Auditor` untuk typosquatting dan plugin authenticity status.
+2. Manifest SHA-256 plugin/theme/MU-plugin/drop-in.
+3. Persistence/database audit.
+4. Trust berbasis path plus hash.
+5. Per-channel notification delivery state dan retry.
+6. Quarantine dry-run, evidence, dan rollback.
+7. Signed release/checksum manifest untuk updater.
+
+#### P2 — advanced malware analysis
+
+1. `ObfuscationAnalyzer` berbasis tokenizer/AST.
+2. Safe bounded decoder.
+3. Entropy dan encoded payload scoring.
+4. Dynamic call/include detection.
+5. YARA/local signature rules.
+6. Synthetic obfuscation test corpus dan regression suite.
+
+### 28. Acceptance Test di Docker Lab
+
+Test wajib setelah implementasi:
+
+1. Buat plugin fixture harmless bernama `akimset`; dashboard harus menandainya `Suspicious Identity`, bukan menghapus otomatis.
+2. Ubah isi plugin/theme yang sudah memiliki manifest; status harus menjadi `Modified After Approval`.
+3. Uji file PHP obfuscated synthetic tanpa menjalankan payload; analyzer harus mendeteksi indikator gabungan.
+4. Uji file lebih besar dari batas; hasil harus `degraded` atau menampilkan coverage gap, bukan `safe`.
+5. Simulasikan checksum API gagal; core status harus `degraded`.
+6. Simulasikan permission denied dan iterator error; error harus muncul di dashboard.
+7. Jalankan scan manual, AJAX, traffic fallback, dan cron bersamaan; hanya satu scan yang boleh memperoleh lock.
+8. Pastikan file PHP di uploads tidak dapat dieksekusi langsung oleh Apache/Nginx sesuai konfigurasi lab.
+9. Pastikan file quarantine tidak dapat diakses publik.
+10. Uji email berhasil/Telegram gagal dan sebaliknya; channel gagal harus memiliki retry state sendiri.
+11. Uji restore dengan konten remote yang checksum-nya tidak cocok; file lokal tidak boleh ditimpa.
+12. Uji baseline setelah simulasi kompromi; baseline harus berstatus pending/review dan tidak langsung dipercaya.
+
+### 29. Kesimpulan Audit
+
+Root cause terbesar bukan sekadar kurangnya signature regex. Ada tiga masalah arsitektur utama:
+
+1. **Coverage:** lokasi executable dan persistence belum dipindai menyeluruh.
+2. **Semantics:** engine belum memahami struktur, provenance, dan perilaku kode.
+3. **Trust:** hasil kosong atau API gagal masih dapat terlihat sebagai aman.
+
+Target sprint harus mengubah WP Root Guard dari scanner anomaly berbasis lokasi menjadi sistem verifikasi berlapis yang transparan terhadap coverage, konservatif terhadap auto-remediation, dan memiliki bukti forensik yang dapat diaudit.
+
 ## Fitur Nice-to-Have: Anti-Deactivate yang Aman
 
 Fitur anti-deactivate harus mencegah deaktivasi tidak sah tanpa membuat plugin tidak dapat dipulihkan oleh pemilik situs.

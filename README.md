@@ -20,7 +20,21 @@
 
 ## Log Pembaruan (Changelog)
 
-### v3.2.0 (1 Oktober 2026)
+### v3.3.0 (1 Oktober 2026)
+- P0 hardening: status security, coverage, dan execution kini dipisahkan; scope yang gagal tidak dapat menghasilkan status aman.
+- Global scan lease untuk jalur cron, traffic, AJAX, dan manual.
+- Initial verification dilakukan sebelum baseline awal dibuat.
+- Restore core memverifikasi checksum resmi dan baseline/restore memakai atomic write.
+- Quarantine mengutamakan vault site-specific di luar webroot dan menonaktifkan auto-quarantine jika storage atau execution guard belum aman.
+- Dashboard menampilkan status coverage dan uploads execution guard.
+
+### v3.2.0 (24 September 2026)
+- **Otomatisasi Core Update & Zero False Positive**: Menambahkan listener core update, invalidasi cache checksum, dan audit log terstruktur untuk perubahan core WordPress.
+- **Dual-Source Fallback Remote Core Restorer**: Menambahkan fallback unduhan resmi untuk pemulihan dan perbandingan berkas core.
+- **Perbaikan Apache dan Pemindaian Uploads**: Memperbaiki sintaks `.htaccess` Apache 2.4, mencegah HTTP 500, mengecualikan data baseline dari scan uploads, dan melindungi localhost/trusted proxy dari self-lockout.
+- **E2E, Uninstall, dan Autoloading**: Menambahkan pengujian otomatis, fixture malware dummy untuk lab, serta penguatan uninstall dan PSR autoloading.
+
+### v3.2.0 — Pembaruan Lanjutan (1 Oktober 2026)
 - **Automatic Scanning Traffic Fallback**: Menambahkan fallback pemindaian saat request website ketika event WP-Cron sudah jatuh tempo. Dilengkapi lock lintas-request dan penggeseran jadwal berikutnya untuk mencegah scan ganda ketika loopback WP-Cron gagal, termasuk pada lab Docker.
 - **Checkpoint & Scheduler UX**: Status scheduler kini membedakan event valid, scan terlambat, scan gagal, dan kondisi yang menunggu request website. Dashboard tidak lagi mengharuskan admin memahami worker cron Docker.
 - **Uploads PHP Auto-Quarantine**: Menambahkan pengaturan terpisah yang aktif secara default untuk memindahkan ekstensi eksekusi (`php`, `phtml`, `phar`, `inc`, dan variasinya) dari `wp-content/uploads/` ke vault karantina. Ini menjadi lapisan perlindungan yang efektif pada Nginx yang tidak membaca `.htaccess`.
@@ -28,12 +42,6 @@
 - **Pemulihan False Positive Lebih Aman**: Restore berkas PHP dari `uploads` tidak lagi otomatis memasukkannya ke whitelist. Admin harus memilih `Trust File` secara sadar setelah memverifikasi isi berkas.
 - **Local Lab Simplification**: Docker Compose lab disederhanakan menjadi service WordPress dan database; konfigurasi tidak lagi bergantung pada container worker cron khusus.
 - **Metadata Author**: Metadata plugin diperbarui menjadi PuTI Telkom University dengan tautan resmi Direktorat PuTI.
-- **Otomatisasi Core Update & Zero False Positive**: Mengintegrasikan listener hook `_core_updated_successfully` dan deteksi versi fallback dengan *Double-Checked Locking*. Otomatis membersihkan cache transient checksums resmi, memperbarui snapshot baseline root dengan validasi HMAC-SHA256, dan mencatat riwayat ke log audit terstruktur tanpa memicu alarm palsu (*zero false positive*) saat WordPress diperbarui secara otomatis.
-- **Dual-Source Fallback Remote Core Restorer**: Menambahkan mekanisme unduh cerdas dengan fallback ganda (SVN WordPress.org tags dan GitHub Official Mirror) serta circuit breaker transient (15 menit) untuk pemulihan berkas core dan komparasi diff kode.
-- **Perbaikan Kritis Apache 2.4 `.htaccess` Syntax (Error 500 Fix)**: Menyelesaikan *alert error* `negative Require directive has no effect in <RequireAny> directive` dengan membungkus aturan pemblokiran IP dalam kontainer `<RequireAll>` dan direktif `Require all granted`. Mencegah situs mengalami *500 Internal Server Error* saat terjadi pemblokiran IP.
-- **Pencegahan False Positive Pemindaian Uploads**: Folder penyimpanan baseline integritas plugin (`wp-content/uploads/wp-root-guard/`) kini otomatis dieksklusikan dari pemindaian berkas PHP, sehingga berkas proteksi `index.php` ("Silence is golden") tidak lagi terdeteksi keliru sebagai malware (*0 false positive*).
-- **Proteksi Anti-Self-Lockout**: Menambahkan verifikasi ketat pada `Blocker::block_ip()` agar IP localhost (`127.0.0.1`, `::1`) dan seluruh IP yang terdaftar di `trusted_proxies` (seperti Docker gateway / IP Developer) tidak pernah dimasukkan ke daftar blokir `.htaccess` saat melakukan simulasi pengujian.
-- **Penyempurnaan Uninstall & PSR Autoloading**: Peningkatan pembersihan menyeluruh pada `uninstall.php` (menghapus seluruh options, transient tunggal dan dinamis, sitemeta multisite, serta direktori karantina) dan penguatan autoloader `spl_autoload_register`.
 
 ### v3.1.2 (29 Juli 2026)
 - **IP Blocker Disabled by Default**: Fitur pemblokiran IP dan interseptor request HTTP kini dikonfigurasi **Nonaktif (OFF)** secara default. Dapat diaktifkan/dinonaktifkan manual di menu Pengaturan.

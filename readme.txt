@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.2.0
+Stable tag: 3.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -25,7 +25,7 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 * Attacker IP Blocker & .htaccess Access Guard: Mencegat percobaan eksekusi webshell dan otomatis memblokir IP penyerang di .htaccess.
 * Inspektur Kode Berkas (Secure Code Inspector): Menginspeksi isi berkas read-only yang aman dengan penandaan warna stabilo merah otomatis (Malware Signature Highlighting).
 * Notifikasi Telegram Read-Only murni 100%: Pengiriman notifikasi peringatan instan ke Telegram Bot API yang murni bersifat informasi saja tanpa membuka endpoint eksekusi eksternal.
-* Vault Karantina Terisolasi Khusus: Menyimpan seluruh berkas terisolasi di wp-content/uploads/wp-root-guard-quarantine/ mebnggunakan .htaccess.
+* Vault Karantina Terisolasi Khusus: Mengutamakan direktori site-specific di luar webroot dan hanya memakai fallback uploads setelah execution guard terverifikasi.
 
 == Installation ==
 
@@ -42,6 +42,15 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.3.0 =
+* P0 security hardening: status scan memisahkan security, coverage, dan execution state sehingga scope gagal tidak lagi dilaporkan sebagai aman.
+* Global scan lease untuk cron, traffic, AJAX, dan manual scan dengan fencing token.
+* Initial verification kini terjadi sebelum baseline pertama dibuat.
+* Restore core memverifikasi checksum resmi dan menggunakan atomic write.
+* Baseline dan konfigurasi Apache uploads ditulis menggunakan temporary file lalu atomic rename.
+* Quarantine mengutamakan vault site-specific di luar webroot dan fail-closed bila storage aman tidak tersedia.
+* Dashboard menampilkan coverage scan dan status uploads execution guard.
 
 = 3.2.0 =
 * Perbaikan Kritis Apache 2.4 .htaccess Syntax: Membungkus aturan blokir IP penyerang dalam kontainer `<RequireAll>` dan direktif `Require all granted`. Menyelesaikan masalah `negative Require directive has no effect in <RequireAny> directive` dan mencegah situs mengalami HTTP 500 error.
