@@ -41,6 +41,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Scanner {
 
 	/**
+	 * Option yang menyimpan checkpoint eksekusi scan terakhir.
+	 */
+	const SCAN_STATE_OPTION = 'wp_root_guard_scan_state';
+
+	/**
 	 * Mendapatkan string tanggal dan waktu berformat WIB (Waktu Indonesia Barat / Asia/Jakarta UTC+7).
 	 *
 	 * @param int|string|null $time Unix timestamp atau string mysql time.
@@ -94,6 +99,78 @@ class Scanner {
 	 * @return array Hasil pemindaian berupa status proteksi dan daftar ancaman terdeteksi.
 	 */
 	public static function perform_scan() {
+		$run_id       = wp_generate_uuid4();
+		$started_at   = microtime( true );
+		$started_gmt  = gmdate( 'Y-m-d H:i:s' );
+
+		self::update_scan_state(
+			array(
+				'status'           => 'running',
+				'run_id'           => $run_id,
+				'started_at_gmt'   => $started_gmt,
+				'completed_at_gmt' => '',
+				'last_heartbeat'   => $started_gmt,
+				'duration_ms'      => 0,
+				'found_count'      => 0,
+				'error'            => '',
+			)
+		);
+
+		try {
+			$results = self::perform_scan_internal();
+			$completed_gmt = gmdate( 'Y-m-d H:i:s' );
+
+			self::update_scan_state(
+				array(
+					'status'           => 'completed',
+					'run_id'           => $run_id,
+					'started_at_gmt'   => $started_gmt,
+					'completed_at_gmt' => $completed_gmt,
+					'last_heartbeat'   => $completed_gmt,
+					'duration_ms'      => (int) round( ( microtime( true ) - $started_at ) * 1000 ),
+					'found_count'      => isset( $results['unknown_count'] ) ? (int) $results['unknown_count'] : 0,
+					'error'            => '',
+				)
+			);
+
+			return $results;
+		} catch ( \Throwable $exception ) {
+			$error = sanitize_text_field( $exception->getMessage() );
+			self::update_scan_state(
+				array(
+					'status'           => 'failed',
+					'run_id'           => $run_id,
+					'started_at_gmt'   => $started_gmt,
+					'completed_at_gmt' => '',
+					'last_heartbeat'   => gmdate( 'Y-m-d H:i:s' ),
+					'duration_ms'      => (int) round( ( microtime( true ) - $started_at ) * 1000 ),
+					'found_count'      => 0,
+					'error'            => $error,
+				)
+			);
+
+			Logger::log(
+				esc_html__( 'Pemindaian gagal dieksekusi', 'wp-root-guard' ),
+				$error,
+				esc_html__( 'Error', 'wp-root-guard' )
+			);
+
+			return array(
+				'last_scan'       => '',
+				'status'          => 'failed',
+				'unknown_count'   => 0,
+				'unknown_folders' => array(),
+			);
+		}
+	}
+
+	/**
+	 * Isi lama scanner dipisahkan agar seluruh jalur scan (manual dan cron)
+	 * selalu melewati checkpoint perform_scan().
+	 *
+	 * @return array Hasil pemindaian.
+	 */
+	private static function perform_scan_internal() {
 		// 0. Maintenance Guard: Tunda pemindaian jika WordPress core update sedang berlangsung.
 		if ( self::is_core_update_in_progress() ) {
 			Logger::log(
@@ -483,6 +560,38 @@ class Scanner {
 		}
 
 		return $scan_results;
+	}
+
+	/**
+	 * Mengambil checkpoint scan terakhir.
+	 *
+	 * @return array Checkpoint scan.
+	 */
+	public static function get_scan_state() {
+		$default = array(
+			'status'           => 'idle',
+			'run_id'           => '',
+			'started_at_gmt'   => '',
+			'completed_at_gmt' => '',
+			'last_heartbeat'   => '',
+			'duration_ms'      => 0,
+			'found_count'      => 0,
+			'error'            => '',
+		);
+
+		$state = get_option( self::SCAN_STATE_OPTION, $default );
+		return is_array( $state ) ? array_merge( $default, $state ) : $default;
+	}
+
+	/**
+	 * Menyimpan checkpoint scan tanpa autoload agar tidak membebani request umum.
+	 *
+	 * @param array $state Data checkpoint parsial.
+	 * @return void
+	 */
+	private static function update_scan_state( $state ) {
+		$current = self::get_scan_state();
+		update_option( self::SCAN_STATE_OPTION, array_merge( $current, $state ), false );
 	}
 
 	/**
