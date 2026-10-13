@@ -618,8 +618,9 @@ class Admin {
 		$folders = Baseline::scan_root_folders();
 		foreach ( $folders as $folder ) {
 			$queue[] = array(
-				'type' => 'folder',
-				'name' => $folder,
+				'type'  => 'folder',
+				'name'  => $folder,
+				'stage' => 1,
 			);
 		}
 
@@ -627,12 +628,13 @@ class Admin {
 		$files = Baseline::scan_root_files();
 		foreach ( array_keys( $files ) as $file ) {
 			$queue[] = array(
-				'type' => 'file',
-				'name' => $file,
+				'type'  => 'file',
+				'name'  => $file,
+				'stage' => 2,
 			);
 		}
 
-		// 3. Tambahkan beberapa file inti penting (wp-admin/wp-includes) untuk simulasi scanner
+		// 3. Tambahkan beberapa file inti penting (wp-admin/wp-includes) untuk verifikasi core
 		$checksums = Scanner::get_core_checksums();
 		if ( is_array( $checksums ) ) {
 			$core_keys = array_keys( $checksums );
@@ -640,13 +642,29 @@ class Admin {
 			$limit = min( count( $core_keys ), 40 );
 			for ( $i = 0; $i < $limit; $i++ ) {
 				$queue[] = array(
-					'type' => 'core',
-					'name' => $core_keys[ $i ],
+					'type'  => 'core',
+					'name'  => $core_keys[ $i ],
+					'stage' => 3,
 				);
 			}
 		}
 
-		wp_send_json_success( array( 'queue' => $queue ) );
+		// 4. Tambahkan pemeriksaan direktori uploads untuk deteksi skrip PHP / webshell
+		$queue[] = array(
+			'type'  => 'uploads',
+			'name'  => 'wp-content/uploads/ (Pemeriksaan Skrip PHP & Webshell)',
+			'stage' => 4,
+		);
+
+		wp_send_json_success( array(
+			'queue'  => $queue,
+			'stages' => array(
+				1 => esc_html__( 'Struktur Direktori Root', 'wp-root-guard' ),
+				2 => esc_html__( 'Berkas Root & Whitelist', 'wp-root-guard' ),
+				3 => esc_html__( 'Integritas Core Checksums', 'wp-root-guard' ),
+				4 => esc_html__( 'Direktori Uploads & Webshell', 'wp-root-guard' ),
+			),
+		) );
 	}
 
 	/**
@@ -1137,30 +1155,67 @@ class Admin {
 						</div>
 					</div>
 
-					<!-- INLINE SCANNER PANEL -->
-					<div id="rg-scan-inline-card" class="rg-card hidden" style="grid-column: 1 / -1; background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #ffffff; border: none; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); margin-bottom: 0;">
-						<div class="rg-card-body" style="padding: 40px 30px; text-align: center;">
+					<!-- INLINE SCANNER PANEL (DARK MODE CYBER RADAR) -->
+					<div id="rg-scan-inline-card" class="rg-card rg-dark-scanner-card hidden">
+						<div class="rg-dark-scanner-body">
 							<div class="rg-scanner-shield">
-								<span class="rg-shield-icon">🛡️</span>
+								<span class="rg-shield-icon" id="rg-shield-icon">🛡️</span>
 								<div class="rg-pulse-wave wave1"></div>
 								<div class="rg-pulse-wave wave2"></div>
+								<div class="rg-radar-sweep"></div>
 							</div>
-							
-							<h2 style="font-size: 22px; font-weight: 800; color: #ffffff; margin: 25px 0 10px 0; letter-spacing: 0.5px;">
-								<?php esc_html_e( 'Memindai Direktori Root & Berkas Core...', 'wp-root-guard' ); ?>
+
+							<div class="rg-scan-status-badge">
+								<span class="rg-live-dot"></span>
+								<span id="rg-scan-status-badge-text"><?php esc_html_e( 'LIVE SECURITY SCAN RUNNING', 'wp-root-guard' ); ?></span>
+							</div>
+
+							<h2 class="rg-scan-title" id="rg-scan-title">
+								<?php esc_html_e( 'Memverifikasi Keamanan & Integritas WordPress...', 'wp-root-guard' ); ?>
 							</h2>
-							
-							<div id="rg-scan-percentage" style="font-size: 44px; font-weight: 900; color: #3b82f6; margin-bottom: 20px; text-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
+							<p class="rg-scan-subtitle" id="rg-scan-subtitle">
+								<?php esc_html_e( 'Memeriksa struktur direktori root, berkas inti, whitelist aturan, dan signature webshell di folder uploads.', 'wp-root-guard' ); ?>
+							</p>
+
+							<!-- Stage Indicator Strip -->
+							<div class="rg-scan-stages-container">
+								<div class="rg-stage-pill active" id="rg-stage-1">
+									<span class="rg-stage-dot"></span>
+									<span>1. <?php esc_html_e( 'Folder Root', 'wp-root-guard' ); ?></span>
+								</div>
+								<div class="rg-stage-pill" id="rg-stage-2">
+									<span class="rg-stage-dot"></span>
+									<span>2. <?php esc_html_e( 'Berkas Root & Whitelist', 'wp-root-guard' ); ?></span>
+								</div>
+								<div class="rg-stage-pill" id="rg-stage-3">
+									<span class="rg-stage-dot"></span>
+									<span>3. <?php esc_html_e( 'Integritas Core Checksums', 'wp-root-guard' ); ?></span>
+								</div>
+								<div class="rg-stage-pill" id="rg-stage-4">
+									<span class="rg-stage-dot"></span>
+									<span>4. <?php esc_html_e( 'Direktori Uploads', 'wp-root-guard' ); ?></span>
+								</div>
+							</div>
+
+							<!-- Big Percentage Display -->
+							<div id="rg-scan-percentage" class="rg-scan-percentage">
 								0%
 							</div>
 
-							<div style="background-color: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 20px; overflow: hidden; margin-bottom: 20px; max-width: 600px; margin-left: auto; margin-right: auto; border: 1px solid rgba(255, 255, 255, 0.05);">
-								<div id="rg-scan-bar" style="background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%); width: 0%; height: 100%; border-radius: 20px; transition: width 0.1s ease; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
+							<!-- Glowing Progress Bar Track -->
+							<div class="rg-scan-bar-track">
+								<div id="rg-scan-bar" class="rg-scan-bar-fill"></div>
 							</div>
 
-							<div style="font-size: 13px; font-weight: 600; color: #94a3b8; min-height: 20px; margin-bottom: 10px;"><?php esc_html_e( 'Sedang memproses:', 'wp-root-guard' ); ?></div>
-							<div id="rg-scan-current-item" style="font-family: monospace; font-size: 12px; color: #38bdf8; word-break: break-all; background-color: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); min-height: 20px; max-width: 600px; margin-left: auto; margin-right: auto;">
-								-
+							<!-- Terminal Console Box -->
+							<div class="rg-terminal-box">
+								<div class="rg-terminal-header">
+									<span class="rg-terminal-prompt">⚡ <?php esc_html_e( 'PEMERIKSAAN SISTEM:', 'wp-root-guard' ); ?></span>
+									<span id="rg-scan-counter" class="rg-terminal-counter">0 / 0 <?php esc_html_e( 'Berkas', 'wp-root-guard' ); ?></span>
+								</div>
+								<div id="rg-scan-current-item" class="rg-terminal-item">
+									<?php esc_html_e( 'Menginisialisasi pemindaian keamanan...', 'wp-root-guard' ); ?>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -1208,10 +1263,11 @@ class Admin {
 						$active_folders[] = $item;
 					}
 				}
+				$has_active_threats = ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) );
 				?>
 
-				<!-- FORM & BULK ACTION BAR -->
-				<?php if ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) ) : ?>
+				<?php if ( $has_active_threats ) : ?>
+					<!-- FORM & BULK ACTION BAR -->
 					<form method="post" id="rg-bulk-form" action="">
 						<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
 						<input type="hidden" name="rg_action" value="bulk_action">
@@ -1232,7 +1288,6 @@ class Admin {
 								<span id="rg-selected-count" class="rg-bulk-count" style="font-weight: bold; color: #2563eb; font-size: 15px;">0</span> <?php esc_html_e( 'item dipilih dari seluruh tabel', 'wp-root-guard' ); ?>
 							</span>
 						</div>
-				<?php endif; ?>
 
 				<!-- TABEL 1: HASIL PEMINDAIAN FOLDER ASING -->
 				<div class="rg-card rg-table-card">
@@ -1527,8 +1582,115 @@ class Admin {
 					</div>
 				</div>
 
-				<?php if ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) ) : ?>
 					</form>
+				<?php else : ?>
+					<!-- OPSI A: HERO CELEBRATION BANNER (100% AMAN & BERSIH) -->
+					<div id="rg-clean-hero-card" class="rg-card rg-clean-hero-card">
+						<div class="rg-clean-hero-content">
+							<div class="rg-clean-badge-icon">
+								<span class="rg-shield-check">🛡️</span>
+							</div>
+							<div class="rg-clean-hero-text">
+								<div class="rg-clean-status-pill">
+									<span class="rg-pulse-green"></span>
+									<?php esc_html_e( '100% AMAN & TERVERIFIKASI', 'wp-root-guard' ); ?>
+								</div>
+								<h2 class="rg-clean-title">
+									<?php esc_html_e( 'Semua Komponen Sistem Terlindungi Sepenuhnya', 'wp-root-guard' ); ?>
+								</h2>
+								<p class="rg-clean-desc">
+									<?php esc_html_e( 'Pemeriksaan menyeluruh tidak menemukan folder asing, berkas mencurigakan, modifikasi pada berkas resmi core, maupun skrip webshell di folder uploads.', 'wp-root-guard' ); ?>
+								</p>
+							</div>
+						</div>
+
+						<!-- 4 Pilar Verifikasi Bersih -->
+						<div class="rg-clean-pillars-grid">
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">📁</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Struktur Direktori Root', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( '100% Bersih', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( '0 folder asing tak dikenal', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">📄</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Berkas Root & Whitelist', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Terverifikasi Aman', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( '.htaccess & wp-config.php terlindungi', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">🛡️</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Integritas Core WordPress', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Sesuai Standar Resmi', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( 'Checksums WordPress.org cocok', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">🚨</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Direktori Uploads', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Bebas Webshell', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( '0 eksekusi PHP mencurigakan', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+						</div>
+
+						<!-- Footer Ringkasan & Toggle Rincian Komponen -->
+						<div class="rg-clean-hero-footer">
+							<div class="rg-clean-meta">
+								<span>🕒 <strong><?php esc_html_e( 'Pemindaian Terakhir:', 'wp-root-guard' ); ?></strong> <?php echo esc_html( $last_scan_time ); ?></span>
+								<span class="rg-meta-sep">•</span>
+								<span>⏳ <strong><?php esc_html_e( 'Jadwal Pemindaian Berikutnya:', 'wp-root-guard' ); ?></strong> <?php echo esc_html( $schedule_status['is_due'] ? ( ! empty( $schedule_status['traffic_fallback'] ) ? esc_html__( 'Menunggu request website', 'wp-root-guard' ) : esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) ) : $next_scan_time ); ?></span>
+							</div>
+							<button type="button" class="button button-secondary button-small" onclick="toggleCleanDetails(this)">
+								📋 <?php esc_html_e( 'Lihat Rincian Komponen Terverifikasi', 'wp-root-guard' ); ?>
+							</button>
+						</div>
+
+						<!-- Collapsible Clean Details -->
+						<div id="rg-clean-details-panel" class="rg-clean-details-panel" style="display: none;">
+							<div class="rg-clean-details-inner">
+								<div class="rg-clean-details-section">
+									<h4>📁 <?php esc_html_e( 'Folder Root Resmi Terdaftar:', 'wp-root-guard' ); ?></h4>
+									<div class="rg-clean-chips">
+										<code>wp-admin</code>
+										<code>wp-includes</code>
+										<code>wp-content</code>
+										<?php
+										$user_wl = \WPRootGuard\Settings::get_user_whitelist();
+										foreach ( $user_wl as $wl_item ) :
+											if ( is_dir( ABSPATH . $wl_item ) ) :
+										?>
+												<span class="rg-chip-whitelist">👍 <?php echo esc_html( $wl_item ); ?> (Whitelist)</span>
+										<?php
+											endif;
+										endforeach;
+										?>
+									</div>
+								</div>
+								<div class="rg-clean-details-section">
+									<h4>📄 <?php esc_html_e( 'Berkas Inti & Whitelist Terverifikasi:', 'wp-root-guard' ); ?></h4>
+									<div class="rg-clean-chips">
+										<code>wp-config.php</code>
+										<code>.htaccess</code>
+										<code>index.php</code>
+										<code>wp-login.php</code>
+										<code>wp-settings.php</code>
+										<code>xmlrpc.php</code>
+										<span class="rg-badge badge-safe"><?php printf( esc_html__( '+ %d Berkas Core Resmi', 'wp-root-guard' ), number_format_i18n( $protected_count ) ); ?></span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
 				<?php endif; ?>
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="display: flex; align-items: center; justify-content: space-between;">

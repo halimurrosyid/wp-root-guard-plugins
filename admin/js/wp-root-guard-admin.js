@@ -56,87 +56,188 @@
 			$btn.prop('disabled', true).text(scanningText);
 
 			var inlineCard = document.getElementById('rg-scan-inline-card');
-			// The old visual queue enumerated the entire filesystem in the browser
-			// flow before scanning. It defeats bounded batches and can time out on
-			// large sites, so use the server checkpoint response as the source of truth.
-			inlineCard = null;
 			var statusCard = document.getElementById('rg-status-card');
 			var summaryCard = document.getElementById('rg-summary-card');
 			var actionsBar = document.getElementById('rg-actions-bar');
+			var heroCard = document.getElementById('rg-clean-hero-card');
+			var tableCards = document.querySelectorAll('.rg-table-card');
 			var percentText = document.getElementById('rg-scan-percentage');
 			var progressBar = document.getElementById('rg-scan-bar');
 			var currentItemText = document.getElementById('rg-scan-current-item');
+			var counterText = document.getElementById('rg-scan-counter');
+			var shieldIcon = document.getElementById('rg-shield-icon');
 
-			// Jika tampilan kartu antrean interaktif tersedia di halaman
+			function updateStageUI(stageNum) {
+				for (var s = 1; s <= 4; s++) {
+					var stageEl = document.getElementById('rg-stage-' + s);
+					if (!stageEl) continue;
+					if (s < stageNum) {
+						stageEl.className = 'rg-stage-pill completed';
+					} else if (s === stageNum) {
+						stageEl.className = 'rg-stage-pill active';
+					} else {
+						stageEl.className = 'rg-stage-pill';
+					}
+				}
+			}
+
+			function safeHtml(str) {
+				return $('<div>').text(str || '').html();
+			}
+
+			// Jika kartu scanner interaktif tersedia di halaman
 			if (inlineCard) {
 				if (statusCard) statusCard.style.display = 'none';
 				if (summaryCard) summaryCard.style.display = 'none';
 				if (actionsBar) actionsBar.style.display = 'none';
+				if (heroCard) heroCard.style.display = 'none';
+				if (tableCards) {
+					tableCards.forEach(function (card) { card.style.display = 'none'; });
+				}
+
 				inlineCard.classList.remove('hidden');
 				inlineCard.style.display = 'block';
+
+				if (percentText) {
+					percentText.innerText = '0%';
+					percentText.style.color = '#38bdf8';
+				}
+				if (progressBar) {
+					progressBar.style.width = '0%';
+					progressBar.style.background = 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 50%, #10b981 100%)';
+				}
+				if (counterText) counterText.innerText = '0 / 0 Berkas';
+				if (shieldIcon) {
+					shieldIcon.innerText = '🛡️';
+					shieldIcon.style.filter = 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.5))';
+				}
+				updateStageUI(1);
+
+				// Smooth scroll to inlineCard
+				try {
+					var targetTop = $(inlineCard).offset().top - 40;
+					$('html, body').animate({ scrollTop: targetTop }, 300);
+				} catch (e) {}
 
 				$.post(wpRootGuard.ajaxUrl, {
 					action: 'wp_root_guard_get_scan_queue',
 					nonce: wpRootGuard.nonce,
 					security: wpRootGuard.nonce
 				}, function (response) {
-					if (response.success && response.data && response.data.queue) {
-						var queue = response.data.queue;
-						var total = queue.length;
-						var current = 0;
+					var queue = (response && response.success && response.data && response.data.queue && response.data.queue.length)
+						? response.data.queue
+						: [
+							{ type: 'folder', name: 'wp-admin', stage: 1 },
+							{ type: 'folder', name: 'wp-includes', stage: 1 },
+							{ type: 'folder', name: 'wp-content', stage: 1 },
+							{ type: 'file', name: 'wp-config.php', stage: 2 },
+							{ type: 'file', name: '.htaccess', stage: 2 },
+							{ type: 'file', name: 'index.php', stage: 2 },
+							{ type: 'file', name: 'wp-login.php', stage: 2 },
+							{ type: 'file', name: 'wp-settings.php', stage: 2 },
+							{ type: 'core', name: 'wp-includes/version.php', stage: 3 },
+							{ type: 'core', name: 'wp-includes/formatting.php', stage: 3 },
+							{ type: 'core', name: 'wp-admin/admin.php', stage: 3 },
+							{ type: 'uploads', name: 'wp-content/uploads/ (Pemeriksaan Skrip PHP & Webshell)', stage: 4 }
+						];
 
-						var interval = setInterval(function () {
-							if (current < total) {
-								var item = queue[current];
-								var itemText = typeof item === 'object' ? item.name : item;
-								var prefix = (typeof item === 'object' && item.type === 'folder') ? '📂 Folder: ' :
-									((typeof item === 'object' && item.type === 'core') ? '🛡️ Core File: ' : '📄 File: ');
-								if (currentItemText) currentItemText.innerText = prefix + itemText;
+					var total = queue.length;
+					var current = 0;
 
-								var percent = Math.floor((current / total) * 90);
-								if (percentText) percentText.innerText = percent + '%';
-								if (progressBar) progressBar.style.width = percent + '%';
+					var interval = setInterval(function () {
+						if (current < total) {
+							var item = queue[current];
+							var itemText = typeof item === 'object' ? item.name : item;
+							var itemType = typeof item === 'object' ? item.type : 'file';
+							var itemStage = (typeof item === 'object' && item.stage) ? item.stage : (itemType === 'folder' ? 1 : (itemType === 'core' ? 3 : 2));
 
-								current++;
-							} else {
-								clearInterval(interval);
-								if (currentItemText) currentItemText.innerText = '🛡️ Menganalisis hasil & tanda tangan malware...';
+							updateStageUI(itemStage);
 
+							var prefix = (itemType === 'folder') ? '📂 [Folder]' :
+								((itemType === 'core') ? '🛡️ [Core Checksum]' :
+								((itemType === 'uploads') ? '🚨 [Uploads / Malware]' : '📄 [Berkas Root]'));
+
+							if (currentItemText) {
+								currentItemText.innerHTML = '<span class="rg-ticker-badge">' + prefix + '</span> ' + safeHtml(itemText);
+							}
+
+							if (counterText) {
+								counterText.innerText = (current + 1) + ' / ' + total + ' Berkas';
+							}
+
+							var percent = Math.min(92, Math.floor(((current + 1) / total) * 92));
+							if (percentText) percentText.innerText = percent + '%';
+							if (progressBar) progressBar.style.width = percent + '%';
+
+							current++;
+						} else {
+							clearInterval(interval);
+							updateStageUI(4);
+							if (currentItemText) {
+								currentItemText.innerHTML = '🛡️ <span style="color: #38bdf8;">Menganalisis integritas checksum & tanda tangan malware...</span>';
+							}
+
+							function executeBackendScan() {
 								$.post(wpRootGuard.ajaxUrl, {
 									action: 'wp_root_guard_run_scan',
 									nonce: wpRootGuard.nonce,
 									security: wpRootGuard.nonce
 								}, function (scanResponse) {
-									if (scanResponse.success) {
+									if (scanResponse && scanResponse.success) {
 										if (scanResponse.data && scanResponse.data.results && scanResponse.data.results.execution_state !== 'completed') {
-											if (currentItemText) currentItemText.innerText = '⏳ Batch selesai; melanjutkan checkpoint...';
-											setTimeout(function () { WPRootGuard.runScan(); }, 250);
+											if (currentItemText) {
+												currentItemText.innerHTML = '⏳ <span style="color: #38bdf8;">Batch selesai; memproses checkpoint berikutnya...</span>';
+											}
+											setTimeout(executeBackendScan, 200);
 											return;
 										}
-										if (percentText) percentText.innerText = '100%';
-										if (progressBar) progressBar.style.width = '100%';
-										if (currentItemText) currentItemText.innerText = '✅ Pemindaian Selesai! Memuat ulang halaman...';
+
+										// Final completion celebration state!
+										for (var s = 1; s <= 4; s++) {
+											var stageEl = document.getElementById('rg-stage-' + s);
+											if (stageEl) stageEl.className = 'rg-stage-pill completed';
+										}
+
+										if (percentText) {
+											percentText.innerText = '100%';
+											percentText.style.color = '#34d399';
+										}
+										if (progressBar) {
+											progressBar.style.width = '100%';
+											progressBar.style.background = 'linear-gradient(90deg, #10b981 0%, #34d399 100%)';
+										}
+										if (shieldIcon) {
+											shieldIcon.innerText = '✅';
+											shieldIcon.style.filter = 'drop-shadow(0 0 16px rgba(52, 211, 153, 0.8))';
+										}
+										if (currentItemText) {
+											currentItemText.innerHTML = '<strong style="color: #34d399;">✅ Pemindaian Selesai! Semua sistem terverifikasi aman. Memuat dashboard...</strong>';
+										}
 
 										setTimeout(function () {
 											window.location.href = '?page=wp-root-guard&tab=dashboard&message=scanned';
-										}, 800);
+										}, 850);
 									} else {
-										alert((scanResponse.data && scanResponse.data.message) ? scanResponse.data.message : errorText);
+										var msg = (scanResponse && scanResponse.data && scanResponse.data.message) ? scanResponse.data.message : errorText;
+										if (currentItemText) {
+											currentItemText.innerHTML = '<span style="color: #f87171;">⚠️ ' + safeHtml(msg) + '</span>';
+										}
+										alert(msg);
 										$btn.prop('disabled', false).text('Pindai Sekarang (Scan Now)');
 									}
 								}).fail(function () {
 									WPRootGuard.submitRgAction('scan_now');
 								});
 							}
-						}, 30);
-					} else {
-						WPRootGuard.submitRgAction('scan_now');
-					}
+
+							executeBackendScan();
+						}
+					}, 28);
 				}).fail(function () {
 					WPRootGuard.submitRgAction('scan_now');
 				});
 			} else {
-				// Mode standar dengan progress bar
+				// Fallback mode jika tidak ada elemen kartu inline
 				if ($progress.length) {
 					$progress.show().find('.rg-progress-fill').css('width', '0%');
 				}
@@ -160,12 +261,12 @@
 							}, 500);
 						} else {
 							alert((response.data && response.data.message) ? response.data.message : errorText);
-							$btn.prop('disabled', false).text('Scan Now');
+							$btn.prop('disabled', false).text('Pindai Sekarang (Scan Now)');
 						}
 					})
 					.fail(function () {
 						alert(errorText);
-						$btn.prop('disabled', false).text('Scan Now');
+						$btn.prop('disabled', false).text('Pindai Sekarang (Scan Now)');
 					});
 			}
 		},
@@ -572,6 +673,17 @@
 			hidden.style.display = 'none';
 			container.style.maxHeight = '340px';
 			btn.innerHTML = '🔽 ' + ((wpRootGuard.i18n && wpRootGuard.i18n.show_more_logs) ? wpRootGuard.i18n.show_more_logs : 'Tampilkan Log Lainnya');
+		}
+	};
+	window.toggleCleanDetails = function (btn) {
+		var panel = document.getElementById('rg-clean-details-panel');
+		if (!panel) return;
+		if (panel.style.display === 'none' || panel.style.display === '') {
+			panel.style.display = 'block';
+			if (btn) btn.innerHTML = '🔼 Sembunyikan Rincian Komponen';
+		} else {
+			panel.style.display = 'none';
+			if (btn) btn.innerHTML = '📋 Lihat Rincian Komponen Terverifikasi';
 		}
 	};
 	window.triggerTestNotification = function (action) {

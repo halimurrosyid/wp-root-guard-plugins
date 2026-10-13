@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.4.0
+Stable tag: 3.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,12 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.5.0 =
+* Tampilan Baru Dark-Mode Real-Time Scanner: Panel pemindaian interaktif bergaya dark tech cyber radar dengan animasi riak radar, indikator 4 tahapan pemeriksaan aktif, persentase digital presisi, dan monitor berkas monospace live ticker.
+* Opsi A - Unified Hero Celebration Banner: Menyederhanakan tampilan dasbor saat 0 temuan ancaman dengan 1 banner perayaan terpadu yang menampilkan 4 pilar verifikasi bersih (Folder Root, Berkas Root, Core WordPress, dan Folder Uploads), menggantikan tabel kosong bertumpuk.
+* Peningkatan stabilitas WP-Cron & Fallback Traffic Scanner untuk keandalan penjadwalan pemindaian berkala dalam kondisi server apa pun.
+* Panel rincian komponen sistem terverifikasi yang dapat diciutkan/dibuka dengan 1 klik.
 
 = 3.4.0 =
 * Kompatibilitas Pembaruan Core WordPress: Verifikasi file root otomatis mencocokkan checksum resmi WordPress.org API untuk versi aktif, mencegah false positive saat rilis WordPress baru.
