@@ -271,7 +271,7 @@ class Settings {
 	 */
 	public static function get_settings() {
 		$defaults = array(
-			'scan_interval'                 => 'every_5_minutes',
+			'scan_interval'                 => 'hourly',
 			'enable_uploads_php_scan'       => true,
 			'enable_uploads_auto_quarantine' => true,
 			'enable_ip_blocker'             => false,

@@ -140,7 +140,8 @@
 					shieldIcon.style.filter = 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.5))';
 				}
 				if (currentItemText) {
-					currentItemText.innerHTML = '⚡ <span style="color: #38bdf8;">Menghubungkan ke pemindai sistem & mengindeks berkas...</span>';
+					var wpInfo = (window.wpRootGuard && window.wpRootGuard.wpVersion) ? ' (WordPress v' + window.wpRootGuard.wpVersion + ')' : '';
+					currentItemText.innerHTML = '⚡ <span style="color: #38bdf8;">[INIT] Menghubungkan ke pemindai sistem' + wpInfo + ' & menyesuaikan checksums resmi...</span>';
 				}
 				updateStageUI(1);
 

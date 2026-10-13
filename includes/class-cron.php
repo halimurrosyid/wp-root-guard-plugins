@@ -117,7 +117,7 @@ class Cron {
 	public static function schedule_event() {
 		self::register_schedules();
 
-		$interval = 'every_5_minutes';
+		$interval = 'hourly';
 		if ( class_exists( __NAMESPACE__ . '\\Settings' ) ) {
 			$settings = Settings::get_settings();
 			if ( ! empty( $settings['scan_interval'] ) ) {
@@ -172,9 +172,9 @@ class Cron {
 		self::register_schedules();
 
 		$settings = class_exists( __NAMESPACE__ . '\\Settings' ) ? Settings::get_settings() : array();
-		$interval = ! empty( $settings['scan_interval'] ) ? sanitize_key( $settings['scan_interval'] ) : 'every_5_minutes';
+		$interval = ! empty( $settings['scan_interval'] ) ? sanitize_key( $settings['scan_interval'] ) : 'hourly';
 		$schedules = wp_get_schedules();
-		$interval_seconds = isset( $schedules[ $interval ]['interval'] ) ? (int) $schedules[ $interval ]['interval'] : 300;
+		$interval_seconds = isset( $schedules[ $interval ]['interval'] ) ? (int) $schedules[ $interval ]['interval'] : 3600;
 		$event = wp_get_scheduled_event( self::SCAN_HOOK );
 		$now = time();
 		$lock = new ScanLock();
@@ -346,7 +346,7 @@ class Cron {
 		$valid_interval = sanitize_key( $new_interval );
 		$schedules      = wp_get_schedules();
 		if ( empty( $valid_interval ) || ! isset( $schedules[ $valid_interval ] ) ) {
-			$valid_interval = 'every_5_minutes';
+			$valid_interval = 'hourly';
 		}
 
 		$result  = wp_schedule_event( time(), $valid_interval, self::SCAN_HOOK, array(), true );

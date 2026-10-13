@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.6.3
+Stable tag: 3.6.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,11 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.6.4 =
+* Frekuensi Pemindaian Bawaan 1 Jam (Default Hourly Scan): Mengubah interval pemindaian latar belakang default menjadi "Setiap 1 Jam" (hourly) untuk keseimbangan optimal antara perlindungan real-time dan efisiensi resource server.
+* Indikator Pra-Pindai Versi WordPress (Pre-Flight Version Inspection): Menampilkan status versi WordPress aktif dan verifikasi checksums resmi WordPress.org secara transparan di Kartu Ringkasan Dasbor dan terminal radar Dark Scanner sebelum pemindaian berjalan.
+* Opsi Frekuensi Ramah Pengguna: Memperbarui urutan dan label opsi di pengaturan dengan penanda rekomendasi default.
 
 = 3.6.3 =
 * Perbaikan Kritis Pembaruan Otomatis (Anti-Deactivation & Clean Slug): Menambahkan filter `upgrader_source_selection` dan `upgrader_post_install` untuk memastikan folder plugin setelah update dari WordPress selalu dinormalisasi menjadi `wp-root-guard/` (tanpa akhiran versi atau folder bertingkat/nested) dan otomatis aktif kembali setelah proses pembaruan selesai.
