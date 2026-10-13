@@ -100,6 +100,8 @@ class Updater {
 
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'check_update' ) );
 		add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
+		add_filter( 'upgrader_source_selection', array( $this, 'filter_source_selection' ), 10, 4 );
+		add_filter( 'upgrader_post_install', array( $this, 'filter_post_install' ), 10, 3 );
 	}
 
 	/**
@@ -311,8 +313,15 @@ class Updater {
 			return '';
 		}
 
-		// 1. Prioritaskan aset rilis berkas .zip jika diunggah pada rilis GitHub.
+		// 1. Prioritaskan aset rilis berkas 'wp-root-guard.zip' (slug kanonikal) terlebih dahulu.
 		if ( ! empty( $release['assets'] ) && is_array( $release['assets'] ) ) {
+			foreach ( $release['assets'] as $asset ) {
+				if ( ! empty( $asset['name'] ) && 'wp-root-guard.zip' === $asset['name'] && ! empty( $asset['browser_download_url'] ) && $this->is_valid_download_url( $asset['browser_download_url'] ) ) {
+					return $asset['browser_download_url'];
+				}
+			}
+
+			// Fallback: ambil aset .zip pertama yang valid jika aset kanonikal tidak ditemukan.
 			foreach ( $release['assets'] as $asset ) {
 				if ( ! empty( $asset['browser_download_url'] ) && $this->is_valid_download_url( $asset['browser_download_url'] ) ) {
 					return $asset['browser_download_url'];
@@ -334,6 +343,96 @@ class Updater {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Memastikan folder sumber hasil ekstraksi selalu dinormalisasi menjadi 'wp-root-guard'
+	 * dan mencegah duplikasi/nested folder maupun slug versi.
+	 *
+	 * @param string      $source        Path direktori sumber sementara.
+	 * @param string      $remote_source Path direktori remote sementara.
+	 * @param \WP_Upgrader $upgrader     Instance upgrader WordPress.
+	 * @param array       $hook_extra    Data konteks pembaruan.
+	 * @return string|\WP_Error Path direktori yang telah dinormalisasi.
+	 */
+	public function filter_source_selection( $source, $remote_source, $upgrader, $hook_extra = array() ) {
+		global $wp_filesystem;
+
+		if ( is_wp_error( $source ) ) {
+			return $source;
+		}
+
+		// Cek apakah aksi pembaruan ini menargetkan plugin WP Root Guard
+		$is_our_plugin = false;
+		if ( ! empty( $hook_extra['plugin'] ) && false !== strpos( $hook_extra['plugin'], 'wp-root-guard' ) ) {
+			$is_our_plugin = true;
+		} elseif ( ! empty( $hook_extra['type'] ) && 'plugin' === $hook_extra['type'] && false !== strpos( $source, 'wp-root-guard' ) ) {
+			$is_our_plugin = true;
+		}
+
+		if ( ! $is_our_plugin ) {
+			return $source;
+		}
+
+		$desired_source = trailingslashit( $remote_source ) . 'wp-root-guard/';
+
+		// 1. Cek jika file utama ada langsung di dalam $source
+		if ( $wp_filesystem->is_file( trailingslashit( $source ) . 'wp-root-guard.php' ) ) {
+			if ( untrailingslashit( $source ) !== untrailingslashit( $desired_source ) ) {
+				if ( $wp_filesystem->move( $source, $desired_source, true ) ) {
+					return $desired_source;
+				}
+			}
+			return $source;
+		}
+
+		// 2. Cek jika terdapat nested subfolder di dalam $source (misal: $source/wp-root-guard/wp-root-guard.php)
+		$nested = trailingslashit( $source ) . 'wp-root-guard/';
+		if ( $wp_filesystem->is_dir( $nested ) && $wp_filesystem->is_file( $nested . 'wp-root-guard.php' ) ) {
+			if ( $wp_filesystem->move( $nested, $desired_source, true ) ) {
+				return $desired_source;
+			}
+		}
+
+		// 3. Cek subdirektori apa pun di dalam $source yang berisi wp-root-guard.php (misal: archive zip GitHub tag)
+		$subdirs = $wp_filesystem->dirlist( $source );
+		if ( is_array( $subdirs ) ) {
+			foreach ( $subdirs as $name => $info ) {
+				if ( 'd' === $info['type'] ) {
+					$candidate = trailingslashit( $source ) . $name . '/';
+					if ( $wp_filesystem->is_file( $candidate . 'wp-root-guard.php' ) ) {
+						if ( $wp_filesystem->move( $candidate, $desired_source, true ) ) {
+							return $desired_source;
+						}
+					}
+				}
+			}
+		}
+
+		return $source;
+	}
+
+	/**
+	 * Memastikan plugin otomatis aktif kembali setelah proses pembaruan selesai.
+	 *
+	 * @param bool  $response   Hasil respon dari upgrader.
+	 * @param array $hook_extra Data konteks pembaruan.
+	 * @param array $result     Data hasil instalasi upgrader.
+	 * @return bool Respon yang telah diverifikasi.
+	 */
+	public function filter_post_install( $response, $hook_extra, $result ) {
+		if ( is_wp_error( $response ) || ! $response ) {
+			return $response;
+		}
+
+		if ( ! empty( $hook_extra['plugin'] ) && false !== strpos( $hook_extra['plugin'], 'wp-root-guard' ) ) {
+			$canonical_plugin = 'wp-root-guard/wp-root-guard.php';
+			if ( ! is_plugin_active( $canonical_plugin ) ) {
+				activate_plugin( $canonical_plugin, '', false, true );
+			}
+		}
+
+		return $response;
 	}
 
 	/**

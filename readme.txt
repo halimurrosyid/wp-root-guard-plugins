@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.6.2
+Stable tag: 3.6.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,11 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.6.3 =
+* Perbaikan Kritis Pembaruan Otomatis (Anti-Deactivation & Clean Slug): Menambahkan filter `upgrader_source_selection` dan `upgrader_post_install` untuk memastikan folder plugin setelah update dari WordPress selalu dinormalisasi menjadi `wp-root-guard/` (tanpa akhiran versi atau folder bertingkat/nested) dan otomatis aktif kembali setelah proses pembaruan selesai.
+* Prioritas Paket Kanonikal: Memprioritaskan pengunduhan aset `wp-root-guard.zip` dari GitHub Releases agar konsisten dengan slug instalasi WordPress.
+* Kompatibilitas Ekstraksi Linux POSIX: Membangun arsip ZIP rilis dengan path separator standar forward slash `/` agar diekstrak dengan sempurna di server Linux.
 
 = 3.6.2 =
 * Pemindai Database Murni Deteksi (Strict Read-Only Mode): Menghapus seluruh tombol dan aksi eksekusi modifikasi/penghapusan database (DROP TABLE, purge post, delete option). Pemindai Tahap 5 kini murni 100% mendeteksi dan memberi rekomendasi pemeriksaan manual demi menjamin keamanan dan keutuhan data database WordPress.

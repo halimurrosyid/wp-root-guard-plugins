@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Packaging WordPress Plugin WP Root Guard ke file ZIP produksi.
 
@@ -79,7 +79,7 @@ $ZipFilename = "$PluginSlug-v$Version.zip"
 $LatestZipFilename = "$PluginSlug.zip"
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "   WP Root Guard — Production Packaging Tool (PS)   " -ForegroundColor Cyan
+Write-Host "   WP Root Guard - Production Packaging Tool (PS)   " -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Log-Info "Plugin Slug : $PluginSlug"
 Log-Info "Versi       : $Version"
@@ -102,7 +102,7 @@ if (-not $SkipLint -and $phpCmd) {
             exit 1
         }
     }
-    Log-Success "Semua file PHP valid (0 sintaks error)."
+    Log-Success 'Semua file PHP valid (0 sintaks error).'
 }
 
 # 4. Siapkan Direktori Staging Sementara
@@ -149,10 +149,19 @@ try {
     if (Test-Path -Path $TargetZip) { Remove-Item -Path $TargetZip -Force }
     if (Test-Path -Path $LatestZip) { Remove-Item -Path $LatestZip -Force }
 
-    Log-Success "Membuat arsip ZIP..."
+    Log-Success "Membuat arsip ZIP (standar POSIX forward slash)..."
 
-    # Gunakan Compress-Archive bawaan PowerShell (optimal compression)
-    Compress-Archive -Path $StageDir -DestinationPath $TargetZip -CompressionLevel Optimal
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $zipArchive = [System.IO.Compression.ZipFile]::Open($TargetZip, [System.IO.Compression.ZipArchiveMode]::Create)
+    $filesToZip = Get-ChildItem -Path $StageDir -Recurse | Where-Object { -not $_.PSIsContainer }
+    foreach ($file in $filesToZip) {
+        $relPath = $file.FullName.Substring($TempBase.Length).TrimStart([char]92, [char]47)
+        $entryName = $relPath.Replace([char]92, [char]47)
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipArchive, $file.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+    $zipArchive.Dispose()
 
     # Salin sebagai versi latest standar (wp-root-guard.zip)
     Copy-Item -Path $TargetZip -Destination $LatestZip -Force
@@ -161,7 +170,7 @@ try {
     $zipFileInfo = Get-Item -Path $TargetZip
     $fileSizeKB = [math]::Round($zipFileInfo.Length / 1KB, 1)
 
-    Log-Success "Packaging berhasil diselesaikan! 🎉"
+    Log-Success "Packaging berhasil diselesaikan!"
     Write-Host ""
     Write-Host "Ringkasan Paket:" -ForegroundColor Green
     Write-Host "----------------------------------------------------"
