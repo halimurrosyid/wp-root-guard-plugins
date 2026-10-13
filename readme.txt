@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.6.1
+Stable tag: 3.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,10 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.6.2 =
+* Pemindai Database Murni Deteksi (Strict Read-Only Mode): Menghapus seluruh tombol dan aksi eksekusi modifikasi/penghapusan database (DROP TABLE, purge post, delete option). Pemindai Tahap 5 kini murni 100% mendeteksi dan memberi rekomendasi pemeriksaan manual demi menjamin keamanan dan keutuhan data database WordPress.
+* Tautan Pemeriksaan Manual Post: Menampilkan tautan langsung "Buka di WP Admin" untuk memudahkan peninjauan post spam slot terdeteksi tanpa risiko eksekusi query destruktif otomatis.
 
 = 3.6.1 =
 * Kekebalan False Positive Core Checksums (Multi-Tier Fallback): Menambahkan sistem resolusi berlapis untuk WordPress.org Core Checksums API (Locale -> en_US fallback -> Clean Version -> Core Built-in Fallback -> Safe Degradation). Mencegah ribuan berkas resmi wp-includes/ dan wp-admin/ salah terdeteksi sebagai penyusup jika koneksi API localized timeout atau mengembalikan 404.
