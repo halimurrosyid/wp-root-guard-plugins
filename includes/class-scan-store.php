@@ -195,7 +195,7 @@ class ScanStore {
 	/** Claim a bounded set of queued items for a worker. */
 	public static function claim_items( $run_id, $scope, $token, $limit ) {
 		global $wpdb;
-		$limit = max( 1, min( 100, absint( $limit ) ) );
+		$limit = max( 1, min( 300, absint( $limit ) ) );
 		$table = self::items_table();
 		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$table} WHERE run_id = %s AND scope = %s AND state = 'queued' ORDER BY id ASC LIMIT {$limit}", $run_id, $scope ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( empty( $ids ) ) { return array(); }

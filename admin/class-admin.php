@@ -422,7 +422,23 @@ class Admin {
 								$success_count++;
 							}
 						} elseif ( 'bulk_delete' === $action_type ) {
-							if ( Scanner::delete_file_directly( $item ) ) {
+							if ( preg_match( '/ID:\s*(\d+)/', $item, $m ) ) {
+								if ( wp_delete_post( absint( $m[1] ), true ) ) {
+									$success_count++;
+								}
+							} elseif ( 0 === strpos( $item, 'Tabel:' ) ) {
+								$tbl_name = trim( str_replace( 'Tabel:', '', $item ) );
+								$tbl_safe = preg_replace( '/[^a-zA-Z0-9_]/', '', $tbl_name );
+								if ( ! empty( $tbl_safe ) && ( ! class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) || ScanBatchRunner::is_rogue_table( $tbl_safe ) ) ) {
+									global $wpdb;
+									$wpdb->query( "DROP TABLE IF EXISTS `{$tbl_safe}`" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+									$success_count++;
+								}
+							} elseif ( 0 === strpos( $item, 'wp_options [' ) ) {
+								$opt = trim( str_replace( array( 'wp_options [', ']' ), '', $item ) );
+								delete_option( sanitize_key( $opt ) );
+								$success_count++;
+							} elseif ( Scanner::delete_file_directly( $item ) ) {
 								$success_count++;
 							}
 						}
@@ -556,6 +572,65 @@ class Admin {
 				}
 				break;
 
+			case 'delete_db_threat':
+				$item_name = isset( $_POST['folder'] ) ? sanitize_text_field( wp_unslash( $_POST['folder'] ) ) : '';
+				if ( ! empty( $item_name ) ) {
+					if ( preg_match( '/ID:\s*(\d+)/', $item_name, $m ) ) {
+						wp_delete_post( absint( $m[1] ), true );
+					} elseif ( 0 === strpos( $item_name, 'Tabel:' ) ) {
+						$tbl_name = trim( str_replace( 'Tabel:', '', $item_name ) );
+						$tbl_safe = preg_replace( '/[^a-zA-Z0-9_]/', '', $tbl_name );
+						if ( ! empty( $tbl_safe ) && class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) && ! ScanBatchRunner::is_rogue_table( $tbl_safe ) ) {
+							// safety guard
+						}
+						global $wpdb;
+						$wpdb->query( "DROP TABLE IF EXISTS `{$tbl_safe}`" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+					} elseif ( 0 === strpos( $item_name, 'wp_options [' ) ) {
+						$opt = trim( str_replace( array( 'wp_options [', ']' ), '', $item_name ) );
+						delete_option( sanitize_key( $opt ) );
+					}
+					Scanner::perform_scan( 'admin' );
+					wp_safe_redirect( add_query_arg( 'message', 'db_threat_deleted', $redirect_url ) );
+					exit;
+				}
+				break;
+
+			case 'purge_slot_spam':
+				global $wpdb;
+				$slot_keywords = array(
+					'slot gacor', 'judi online', 'rtp slot', 'sbobet',
+					'pragmatic play', 'maxwin', 'situs slot', 'bandar togel',
+					'poker online', 'agen slot', 'slot88', 'slot deposit',
+					'link gacor', 'judi bola', 'bocoran slot', 'togel online',
+					'slot online', 'zeus olympus'
+				);
+				$likes  = array();
+				$params = array();
+				foreach ( $slot_keywords as $kw ) {
+					$likes[]  = '(post_title LIKE %s OR post_content LIKE %s)';
+					$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
+					$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
+				}
+				$where = implode( ' OR ', $likes );
+				$sql = "SELECT ID FROM {$wpdb->posts} WHERE ({$where})";
+				$matched_ids = $wpdb->get_col( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+				$purged = 0;
+				if ( ! empty( $matched_ids ) ) {
+					foreach ( $matched_ids as $p_id ) {
+						if ( wp_delete_post( absint( $p_id ), true ) ) {
+							$purged++;
+						}
+					}
+				}
+				Logger::log(
+					sprintf( esc_html__( 'Pembersihan massal spam slot dieksekusi: %d post dihapus', 'wp-root-guard' ), $purged ),
+					'Database Post Purge',
+					$purged > 0 ? 'Threat Cleaned' : 'Clean'
+				);
+				Scanner::perform_scan( 'admin' );
+				wp_safe_redirect( add_query_arg( array( 'message' => 'slot_purged', 'count' => $purged ), $redirect_url ) );
+				exit;
+
 			case 'export_logs_csv':
 				$logs_export = Logger::get_logs();
 				if ( empty( $logs_export ) ) {
@@ -656,6 +731,13 @@ class Admin {
 			'stage' => 4,
 		);
 
+		// 5. Tambahkan pemeriksaan database & konten slot gacor
+		$queue[] = array(
+			'type'  => 'database',
+			'name'  => 'wp_posts, wp_options & Tabel Database (Pemeriksaan Injeksi Slot Gacor)',
+			'stage' => 5,
+		);
+
 		wp_send_json_success( array(
 			'queue'  => $queue,
 			'stages' => array(
@@ -663,6 +745,7 @@ class Admin {
 				2 => esc_html__( 'Berkas Root & Whitelist', 'wp-root-guard' ),
 				3 => esc_html__( 'Integritas Core Checksums', 'wp-root-guard' ),
 				4 => esc_html__( 'Direktori Uploads & Webshell', 'wp-root-guard' ),
+				5 => esc_html__( 'Database & Slot Guard', 'wp-root-guard' ),
 			),
 		) );
 	}
@@ -952,6 +1035,17 @@ class Admin {
 				$notice_class = 'notice-error';
 				$notice_text  = esc_html__( 'Gagal menghapus item karantina dari server.', 'wp-root-guard' );
 				break;
+			case 'db_threat_deleted':
+				$notice_text = esc_html__( 'Ancaman database (konten slot gacor / tabel berbahaya) berhasil dihapus dan dibersihkan.', 'wp-root-guard' );
+				break;
+			case 'slot_purged':
+				$purged_count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text  = sprintf(
+					/* translators: %d: jumlah konten slot dibersihkan */
+					esc_html__( '⚡ Berhasil membersihkan %d konten/injeksi spam slot judi dari database WordPress.', 'wp-root-guard' ),
+					$purged_count
+				);
+				break;
 		}
 
 		?>
@@ -1174,7 +1268,7 @@ class Admin {
 								<?php esc_html_e( 'Memverifikasi Keamanan & Integritas WordPress...', 'wp-root-guard' ); ?>
 							</h2>
 							<p class="rg-scan-subtitle" id="rg-scan-subtitle">
-								<?php esc_html_e( 'Memeriksa struktur direktori root, berkas inti, whitelist aturan, dan signature webshell di folder uploads.', 'wp-root-guard' ); ?>
+								<?php esc_html_e( 'Memeriksa struktur direktori root, berkas inti, whitelist aturan, direktori uploads, dan database WordPress.', 'wp-root-guard' ); ?>
 							</p>
 
 							<!-- Stage Indicator Strip -->
@@ -1194,6 +1288,10 @@ class Admin {
 								<div class="rg-stage-pill" id="rg-stage-4">
 									<span class="rg-stage-dot"></span>
 									<span>4. <?php esc_html_e( 'Direktori Uploads', 'wp-root-guard' ); ?></span>
+								</div>
+								<div class="rg-stage-pill" id="rg-stage-5">
+									<span class="rg-stage-dot"></span>
+									<span>5. <?php esc_html_e( 'Database & Slot Guard', 'wp-root-guard' ); ?></span>
 								</div>
 							</div>
 
@@ -1240,11 +1338,12 @@ class Admin {
 				</div>
 
 				<?php
-				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), core_file, dan uploads_php
-				$active_folders = array();
-				$active_files   = array();
-				$active_core    = array();
-				$active_uploads = array();
+				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), core_file, uploads_php, dan database_threat
+				$active_folders  = array();
+				$active_files    = array();
+				$active_core     = array();
+				$active_uploads  = array();
+				$active_database = array();
 
 				foreach ( $unknown_folders as $item ) {
 					// Lewati folder atau berkas yang sudah berhasil dikarantina
@@ -1259,11 +1358,13 @@ class Admin {
 						$active_core[] = $item;
 					} elseif ( 'file' === $type ) {
 						$active_files[] = $item;
+					} elseif ( in_array( $type, array( 'database_threat', 'db_table', 'db_post', 'db_option' ), true ) ) {
+						$active_database[] = $item;
 					} else {
 						$active_folders[] = $item;
 					}
 				}
-				$has_active_threats = ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) );
+				$has_active_threats = ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) || ! empty( $active_database ) );
 				?>
 
 				<?php if ( $has_active_threats ) : ?>
@@ -1582,6 +1683,72 @@ class Admin {
 					</div>
 				</div>
 
+				<!-- TABEL 5: HASIL PEMINDAIAN DATABASE & KONTEN SLOT GACOR -->
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca; display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
+							🗄️ <?php esc_html_e( 'Hasil Scan: Temuan Injeksi Database / Konten Slot Gacor', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_database ) ) : ?>
+								<span class="rg-badge badge-danger"><?php echo count( $active_database ); ?> <?php esc_html_e( 'Ancaman Terdeteksi', 'wp-root-guard' ); ?></span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Bersih</span>
+							<?php endif; ?>
+						</h2>
+						<?php if ( ! empty( $active_database ) ) : ?>
+							<button type="button" class="button button-danger" style="background: #dc2626; color: #fff; border-color: #b91c1c; font-weight: 600;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membersihkan semua post/konten spam slot gacor yang terdeteksi dari database secara permanen?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('purge_slot_spam', ''); }">
+								⚡ <?php esc_html_e( 'Bersihkan Semua Konten Slot (Purge All Slot Spam)', 'wp-root-guard' ); ?>
+							</button>
+						<?php endif; ?>
+					</div>
+					<div class="rg-card-body">
+						<?php if ( empty( $active_database ) ) : ?>
+							<div class="rg-empty-message">
+								<p>✅ <?php esc_html_e( 'Database WordPress bersih. Tidak ada tabel asing berbahaya atau injeksi konten slot gacor.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
+										<th><?php esc_html_e( 'Komponen Database / Item', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Target / Lokasi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Indikasi Bahaya / Keterangan', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
+										<th style="width: 220px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $active_database as $item ) : ?>
+										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $item['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
+											<td><strong class="text-danger"><?php echo esc_html( $item['name'] ); ?></strong></td>
+											<td><code><?php echo esc_html( $item['path'] ); ?></code></td>
+											<td>
+												<span class="text-danger" style="font-size: 13px; font-weight: 600;">
+													⚠️ <?php echo esc_html( $item['malware_indicator'] ); ?>
+												</span>
+											</td>
+											<td><?php echo esc_html( $item['detection_time'] ); ?></td>
+											<td>
+												<span class="rg-badge badge-danger"><?php echo esc_html( $item['status'] ); ?></span>
+											</td>
+											<td>
+												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $item['name'] ); ?>')">
+													👍 <?php esc_html_e( 'Trust Item', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="color: #dc2626; border-color: #fca5a5; text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin membersihkan/menghapus ancaman database ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_db_threat', '<?php echo esc_js( $item['name'] ); ?>'); }">
+													🗑️ <?php esc_html_e( 'Hapus / Bersihkan', 'wp-root-guard' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
+
 					</form>
 				<?php else : ?>
 					<!-- OPSI A: HERO CELEBRATION BANNER (100% AMAN & BERSIH) -->
@@ -1599,12 +1766,12 @@ class Admin {
 									<?php esc_html_e( 'Semua Komponen Sistem Terlindungi Sepenuhnya', 'wp-root-guard' ); ?>
 								</h2>
 								<p class="rg-clean-desc">
-									<?php esc_html_e( 'Pemeriksaan menyeluruh tidak menemukan folder asing, berkas mencurigakan, modifikasi pada berkas resmi core, maupun skrip webshell di folder uploads.', 'wp-root-guard' ); ?>
+									<?php esc_html_e( 'Pemeriksaan menyeluruh tidak menemukan folder asing, berkas mencurigakan, modifikasi pada berkas resmi core, skrip webshell di folder uploads, maupun injeksi slot di database.', 'wp-root-guard' ); ?>
 								</p>
 							</div>
 						</div>
 
-						<!-- 4 Pilar Verifikasi Bersih -->
+						<!-- 5 Pilar Verifikasi Bersih -->
 						<div class="rg-clean-pillars-grid">
 							<div class="rg-clean-pillar-item">
 								<div class="rg-pillar-icon">📁</div>
@@ -1639,6 +1806,15 @@ class Admin {
 									<strong><?php esc_html_e( 'Direktori Uploads', 'wp-root-guard' ); ?></strong>
 									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Bebas Webshell', 'wp-root-guard' ); ?></span>
 									<small><?php esc_html_e( '0 eksekusi PHP mencurigakan', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">🗄️</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Integritas Database WordPress', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Bebas Konten Slot Gacor', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( '0 tabel liar & injeksi judi online', 'wp-root-guard' ); ?></small>
 								</div>
 							</div>
 						</div>

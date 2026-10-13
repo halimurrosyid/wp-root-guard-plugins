@@ -1024,10 +1024,10 @@ code {
 	margin: 0 !important;
 }
 
-/* 4 Pillars Grid */
+/* 5 Pillars Grid */
 .rg-clean-pillars-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
 	gap: 16px;
 	margin-bottom: 24px;
 }

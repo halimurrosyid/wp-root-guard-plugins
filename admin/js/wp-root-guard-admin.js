@@ -32,6 +32,11 @@
 			this.bindStickyBar();
 			this.bindSettingsToggles();
 			this.bindModalKeyboard();
+
+			// Auto resume scan if active scan is running in background (e.g. after refresh)
+			if ($('#rg-status-card').hasClass('rg-status-scanning')) {
+				WPRootGuard.runScan();
+			}
 		},
 
 		/**
@@ -68,7 +73,7 @@
 			var shieldIcon = document.getElementById('rg-shield-icon');
 
 			function updateStageUI(stageNum) {
-				for (var s = 1; s <= 4; s++) {
+				for (var s = 1; s <= 5; s++) {
 					var stageEl = document.getElementById('rg-stage-' + s);
 					if (!stageEl) continue;
 					if (s < stageNum) {
@@ -83,6 +88,29 @@
 
 			function safeHtml(str) {
 				return $('<div>').text(str || '').html();
+			}
+
+			function numberFormat(num) {
+				return (num || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+			}
+
+			function renderTicker(folder, file, scope) {
+				if (!currentItemText) return;
+				var badge = '📄 [Berkas]';
+				if (scope === 'root_folders') {
+					badge = '📂 [Folder Root]';
+				} else if (scope === 'root_files') {
+					badge = '📄 [Berkas Root]';
+				} else if (scope === 'core_checksums' || scope === 'core_injected_files') {
+					badge = '🛡️ [Core Checksum]';
+				} else if (scope === 'uploads_php') {
+					badge = '🚨 [Uploads / Malware]';
+				} else if (scope === 'database_integrity') {
+					badge = '🗄️ [Database Guard]';
+				}
+				currentItemText.innerHTML = '<span class="rg-ticker-badge">' + badge + '</span> ' +
+					'<span style="color: #94a3b8;">' + safeHtml(folder) + '</span> ' +
+					'<strong style="color: #f1f5f9; margin-left: 4px;">' + safeHtml(file) + '</strong>';
 			}
 
 			// Jika kartu scanner interaktif tersedia di halaman
@@ -106,10 +134,13 @@
 					progressBar.style.width = '0%';
 					progressBar.style.background = 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 50%, #10b981 100%)';
 				}
-				if (counterText) counterText.innerText = '0 / 0 Berkas';
+				if (counterText) counterText.innerText = '0 / 0 Berkas & Tabel';
 				if (shieldIcon) {
 					shieldIcon.innerText = '🛡️';
 					shieldIcon.style.filter = 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.5))';
+				}
+				if (currentItemText) {
+					currentItemText.innerHTML = '⚡ <span style="color: #38bdf8;">Menghubungkan ke pemindai sistem & mengindeks berkas...</span>';
 				}
 				updateStageUI(1);
 
@@ -119,123 +150,122 @@
 					$('html, body').animate({ scrollTop: targetTop }, 300);
 				} catch (e) {}
 
-				$.post(wpRootGuard.ajaxUrl, {
-					action: 'wp_root_guard_get_scan_queue',
-					nonce: wpRootGuard.nonce,
-					security: wpRootGuard.nonce
-				}, function (response) {
-					var queue = (response && response.success && response.data && response.data.queue && response.data.queue.length)
-						? response.data.queue
-						: [
-							{ type: 'folder', name: 'wp-admin', stage: 1 },
-							{ type: 'folder', name: 'wp-includes', stage: 1 },
-							{ type: 'folder', name: 'wp-content', stage: 1 },
-							{ type: 'file', name: 'wp-config.php', stage: 2 },
-							{ type: 'file', name: '.htaccess', stage: 2 },
-							{ type: 'file', name: 'index.php', stage: 2 },
-							{ type: 'file', name: 'wp-login.php', stage: 2 },
-							{ type: 'file', name: 'wp-settings.php', stage: 2 },
-							{ type: 'core', name: 'wp-includes/version.php', stage: 3 },
-							{ type: 'core', name: 'wp-includes/formatting.php', stage: 3 },
-							{ type: 'core', name: 'wp-admin/admin.php', stage: 3 },
-							{ type: 'uploads', name: 'wp-content/uploads/ (Pemeriksaan Skrip PHP & Webshell)', stage: 4 }
-						];
+				var isScanningRunning = true;
 
-					var total = queue.length;
-					var current = 0;
+				function executeBackendBatch() {
+					if (!isScanningRunning) return;
 
-					var interval = setInterval(function () {
-						if (current < total) {
-							var item = queue[current];
-							var itemText = typeof item === 'object' ? item.name : item;
-							var itemType = typeof item === 'object' ? item.type : 'file';
-							var itemStage = (typeof item === 'object' && item.stage) ? item.stage : (itemType === 'folder' ? 1 : (itemType === 'core' ? 3 : 2));
+					$.post(wpRootGuard.ajaxUrl, {
+						action: 'wp_root_guard_run_scan',
+						nonce: wpRootGuard.nonce,
+						security: wpRootGuard.nonce
+					}, function (scanResponse) {
+						if (scanResponse && scanResponse.success) {
+							var res = (scanResponse.data && scanResponse.data.results) ? scanResponse.data.results : {};
+							var progress = res.progress || {};
+							var executionState = res.execution_state || '';
+							var isCompleted = (executionState === 'completed');
 
-							updateStageUI(itemStage);
+							// Map scope to 5 stages
+							var scope = progress.scope || 'root_folders';
+							var stageNum = 1;
+							if (scope === 'root_folders') stageNum = 1;
+							else if (scope === 'root_files') stageNum = 2;
+							else if (scope === 'core_checksums' || scope === 'core_injected_files') stageNum = 3;
+							else if (scope === 'uploads_php') stageNum = 4;
+							else if (scope === 'database_integrity' || scope === 'remediate') stageNum = 5;
+							else if (isCompleted) stageNum = 5;
 
-							var prefix = (itemType === 'folder') ? '📂 [Folder]' :
-								((itemType === 'core') ? '🛡️ [Core Checksum]' :
-								((itemType === 'uploads') ? '🚨 [Uploads / Malware]' : '📄 [Berkas Root]'));
+							updateStageUI(stageNum);
 
-							if (currentItemText) {
-								currentItemText.innerHTML = '<span class="rg-ticker-badge">' + prefix + '</span> ' + safeHtml(itemText);
+							var processed = parseInt(progress.processed || 0, 10);
+							var total = parseInt(progress.total || 0, 10);
+							var folder = progress.current_folder || 'Root';
+							var file = progress.current_file || '';
+							var recent = progress.recent_items || [];
+
+							// Dynamic percentage
+							var pct = 0;
+							if (isCompleted) {
+								pct = 100;
+							} else if (total > 0) {
+								pct = Math.min(98, Math.max(2, Math.floor((processed / total) * 98)));
+							} else {
+								pct = 5;
 							}
+
+							if (percentText) percentText.innerText = pct + '%';
+							if (progressBar) progressBar.style.width = pct + '%';
 
 							if (counterText) {
-								counterText.innerText = (current + 1) + ' / ' + total + ' Berkas';
+								var dispTotal = Math.max(total, processed);
+								counterText.innerText = numberFormat(processed) + ' / ' + numberFormat(dispTotal) + ' Berkas & Tabel';
 							}
 
-							var percent = Math.min(92, Math.floor(((current + 1) / total) * 92));
-							if (percentText) percentText.innerText = percent + '%';
-							if (progressBar) progressBar.style.width = percent + '%';
+							if (file) {
+								renderTicker(folder, file, scope);
+							}
 
-							current++;
-						} else {
-							clearInterval(interval);
-							updateStageUI(4);
+							if (!isCompleted) {
+								// Sub-ticker rapid animation through recent items
+								if (recent && recent.length > 1) {
+									var itemIdx = 0;
+									var miniTimer = setInterval(function () {
+										itemIdx++;
+										if (itemIdx < recent.length) {
+											var itm = recent[itemIdx];
+											renderTicker(itm.folder, itm.file, itm.scope);
+										} else {
+											clearInterval(miniTimer);
+										}
+									}, 35);
+								}
+								// Schedule next batch
+								setTimeout(executeBackendBatch, 60);
+								return;
+							}
+
+							// Completed celebration!
+							isScanningRunning = false;
+							for (var s = 1; s <= 5; s++) {
+								var stageEl = document.getElementById('rg-stage-' + s);
+								if (stageEl) stageEl.className = 'rg-stage-pill completed';
+							}
+							if (percentText) {
+								percentText.innerText = '100%';
+								percentText.style.color = '#34d399';
+							}
+							if (progressBar) {
+								progressBar.style.width = '100%';
+								progressBar.style.background = 'linear-gradient(90deg, #10b981 0%, #34d399 100%)';
+							}
+							if (shieldIcon) {
+								shieldIcon.innerText = '✅';
+								shieldIcon.style.filter = 'drop-shadow(0 0 16px rgba(52, 211, 153, 0.8))';
+							}
 							if (currentItemText) {
-								currentItemText.innerHTML = '🛡️ <span style="color: #38bdf8;">Menganalisis integritas checksum & tanda tangan malware...</span>';
+								currentItemText.innerHTML = '<strong style="color: #34d399;">✅ Pemindaian Selesai! Semua direktori dan database WordPress terverifikasi. Memuat dashboard...</strong>';
 							}
 
-							function executeBackendScan() {
-								$.post(wpRootGuard.ajaxUrl, {
-									action: 'wp_root_guard_run_scan',
-									nonce: wpRootGuard.nonce,
-									security: wpRootGuard.nonce
-								}, function (scanResponse) {
-									if (scanResponse && scanResponse.success) {
-										if (scanResponse.data && scanResponse.data.results && scanResponse.data.results.execution_state !== 'completed') {
-											if (currentItemText) {
-												currentItemText.innerHTML = '⏳ <span style="color: #38bdf8;">Batch selesai; memproses checkpoint berikutnya...</span>';
-											}
-											setTimeout(executeBackendScan, 200);
-											return;
-										}
+							setTimeout(function () {
+								window.location.href = '?page=wp-root-guard&tab=dashboard&message=scanned';
+							}, 900);
 
-										// Final completion celebration state!
-										for (var s = 1; s <= 4; s++) {
-											var stageEl = document.getElementById('rg-stage-' + s);
-											if (stageEl) stageEl.className = 'rg-stage-pill completed';
-										}
-
-										if (percentText) {
-											percentText.innerText = '100%';
-											percentText.style.color = '#34d399';
-										}
-										if (progressBar) {
-											progressBar.style.width = '100%';
-											progressBar.style.background = 'linear-gradient(90deg, #10b981 0%, #34d399 100%)';
-										}
-										if (shieldIcon) {
-											shieldIcon.innerText = '✅';
-											shieldIcon.style.filter = 'drop-shadow(0 0 16px rgba(52, 211, 153, 0.8))';
-										}
-										if (currentItemText) {
-											currentItemText.innerHTML = '<strong style="color: #34d399;">✅ Pemindaian Selesai! Semua sistem terverifikasi aman. Memuat dashboard...</strong>';
-										}
-
-										setTimeout(function () {
-											window.location.href = '?page=wp-root-guard&tab=dashboard&message=scanned';
-										}, 850);
-									} else {
-										var msg = (scanResponse && scanResponse.data && scanResponse.data.message) ? scanResponse.data.message : errorText;
-										if (currentItemText) {
-											currentItemText.innerHTML = '<span style="color: #f87171;">⚠️ ' + safeHtml(msg) + '</span>';
-										}
-										alert(msg);
-										$btn.prop('disabled', false).text('Pindai Sekarang (Scan Now)');
-									}
-								}).fail(function () {
-									WPRootGuard.submitRgAction('scan_now');
-								});
+						} else {
+							var msg = (scanResponse && scanResponse.data && scanResponse.data.message) ? scanResponse.data.message : errorText;
+							if (currentItemText) {
+								currentItemText.innerHTML = '<span style="color: #f87171;">⚠️ ' + safeHtml(msg) + '</span>';
 							}
-
-							executeBackendScan();
+							alert(msg);
+							$btn.prop('disabled', false).text('Pindai Sekarang (Scan Now)');
 						}
-					}, 28);
-				}).fail(function () {
-					WPRootGuard.submitRgAction('scan_now');
-				});
+					}).fail(function () {
+						WPRootGuard.submitRgAction('scan_now');
+					});
+				}
+
+				// Execute first batch immediately
+				executeBackendBatch();
 			} else {
 				// Fallback mode jika tidak ada elemen kartu inline
 				if ($progress.length) {
@@ -742,6 +772,21 @@
 
 		actionField.value = action;
 		mainForm.submit();
+	};
+
+	window.startDynamicScan = function () {
+		WPRootGuard.runScan();
+	};
+
+	window.submitDbAction = function (action, target) {
+		var form = document.getElementById('rg-action-form');
+		var actField = document.getElementById('rg-action-field');
+		var folderField = document.getElementById('rg-folder-field');
+		if (form && actField && folderField) {
+			actField.value = action;
+			folderField.value = target;
+			form.submit();
+		}
 	};
 
 	$(document).ready(function () {

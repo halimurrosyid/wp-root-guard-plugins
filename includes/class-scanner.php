@@ -508,9 +508,10 @@ class Scanner {
 				}
 			}
 
-			// 3. Deteksi File Penyusup (Injected Files) di wp-admin/ & wp-includes/
-			$core_dirs = array( 'wp-admin', 'wp-includes' );
-			foreach ( $core_dirs as $dir ) {
+			// 3. Deteksi File Penyusup (Injected Files) di wp-admin/ & wp-includes/ (Hanya jika checksums valid & tidak kosong)
+			if ( ! empty( $checksums ) && is_array( $checksums ) ) {
+				$core_dirs = array( 'wp-admin', 'wp-includes' );
+				foreach ( $core_dirs as $dir ) {
 				$dir_path = ABSPATH . $dir;
 				if ( is_dir( $dir_path ) ) {
 					try {
@@ -570,6 +571,7 @@ class Scanner {
 						// Abaikan error iterator
 					}
 				}
+			}
 			}
 		} else {
 			$coverage_status = ScanResult::COVERAGE_DEGRADED;
@@ -814,46 +816,63 @@ class Scanner {
 	public static function get_core_checksums() {
 		global $wp_version;
 		$locale        = get_locale();
+		$clean_version = preg_replace( '/-.*$/', '', (string) $wp_version );
 		$transient_key = self::get_core_checksum_transient_key( $wp_version, $locale );
 		$cached        = get_transient( $transient_key );
 
-		if ( is_array( $cached ) ) {
+		if ( is_array( $cached ) && ! empty( $cached ) ) {
 			return $cached;
 		}
 
-		// Cek circuit breaker transient jika API baru saja gagal dalam 15 menit terakhir
-		$fail_key = 'wp_rg_chk_fail_' . substr( md5( (string) $wp_version . '_' . $locale ), 0, 20 );
-		if ( get_transient( $fail_key ) ) {
-			return false;
+		// Check global legacy cache as well
+		$legacy_cached = get_transient( 'wp_root_guard_core_checksums' );
+		if ( is_array( $legacy_cached ) && ! empty( $legacy_cached ) ) {
+			return $legacy_cached;
 		}
 
-		$url      = "https://api.wordpress.org/core/checksums/1.0/?version={$wp_version}&locale={$locale}";
-		$response = wp_remote_get( $url, array( 'timeout' => 15 ) );
-
-		if ( is_wp_error( $response ) ) {
-			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
-			return false;
+		// URLs to attempt in order of priority: locale specific -> en_US fallback -> clean version fallback
+		$urls_to_try = array();
+		$urls_to_try[] = "https://api.wordpress.org/core/checksums/1.0/?version={$wp_version}&locale={$locale}";
+		if ( 'en_US' !== $locale ) {
+			$urls_to_try[] = "https://api.wordpress.org/core/checksums/1.0/?version={$wp_version}&locale=en_US";
+		}
+		if ( $clean_version !== $wp_version ) {
+			$urls_to_try[] = "https://api.wordpress.org/core/checksums/1.0/?version={$clean_version}&locale=en_US";
 		}
 
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code ) {
-			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
-			return false;
+		foreach ( $urls_to_try as $url ) {
+			$response = wp_remote_get( $url, array( 'timeout' => 12 ) );
+			if ( is_wp_error( $response ) ) {
+				continue;
+			}
+			$code = wp_remote_retrieve_response_code( $response );
+			if ( 200 !== $code ) {
+				continue;
+			}
+			$body = wp_remote_retrieve_body( $response );
+			$data = json_decode( $body, true );
+			if ( is_array( $data ) && ! empty( $data['checksums'] ) ) {
+				// Success! Cache for 24 hours
+				set_transient( $transient_key, $data['checksums'], DAY_IN_SECONDS );
+				set_transient( 'wp_root_guard_core_checksums', $data['checksums'], DAY_IN_SECONDS );
+				return $data['checksums'];
+			}
 		}
 
-		$body = wp_remote_retrieve_body( $response );
-		$data = json_decode( $body, true );
-
-		if ( ! is_array( $data ) || empty( $data['checksums'] ) ) {
-			set_transient( $fail_key, 1, 15 * MINUTE_IN_SECONDS );
-			return false;
+		// Fallback to built-in WordPress core function if available
+		if ( function_exists( 'get_core_checksums' ) ) {
+			$core_chk = get_core_checksums( $wp_version, $locale );
+			if ( empty( $core_chk ) && 'en_US' !== $locale ) {
+				$core_chk = get_core_checksums( $wp_version, 'en_US' );
+			}
+			if ( is_array( $core_chk ) && ! empty( $core_chk ) ) {
+				set_transient( $transient_key, $core_chk, DAY_IN_SECONDS );
+				set_transient( 'wp_root_guard_core_checksums', $core_chk, DAY_IN_SECONDS );
+				return $core_chk;
+			}
 		}
 
-		// Simpan di cache transient selama 24 jam (dinamis & legacy)
-		set_transient( $transient_key, $data['checksums'], DAY_IN_SECONDS );
-		set_transient( 'wp_root_guard_core_checksums', $data['checksums'], DAY_IN_SECONDS );
-
-		return $data['checksums'];
+		return false;
 	}
 
 	/**
@@ -1149,7 +1168,7 @@ class Scanner {
 			$boundary . 'str_rot13\('                    => 'str_rot13()',
 			$boundary . 'convert_uudecode\('             => 'convert_uudecode()',
 			$boundary . 'create_function\('              => 'create_function()',
-			$boundary . 'call_user_func\('               => 'call_user_func()',
+			$boundary . 'call_user_func\s*\(\s*(?:\$_(?:POST|GET|REQUEST|COOKIE)|base64_decode|gzinflate)' => 'Malicious call_user_func()',
 			$boundary . 'assert\('                       => 'assert()',
 			$boundary . '\$_POST\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\(' => 'Dynamic $_POST call',
 			$boundary . '\$_GET\s*\[\s*[\'"]\s*[a-zA-Z0-9_\-]+\s*[\'"]\s*\]\s*\('  => 'Dynamic $_GET call',

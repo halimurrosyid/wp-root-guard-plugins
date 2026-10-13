@@ -11,10 +11,10 @@ namespace WPRootGuard;
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 class ScanBatchRunner {
-	const MAX_ITEMS = 100;
+	const MAX_ITEMS = 250;
 	const MAX_SECONDS = 5;
 	const RUN_OPTION = 'wp_root_guard_batch_run';
-	const SCOPES = array( 'root_folders', 'root_files', 'core_checksums', 'core_injected_files', 'uploads_php', 'remediate', 'finalize' );
+	const SCOPES = array( 'root_folders', 'root_files', 'core_checksums', 'core_injected_files', 'uploads_php', 'database_integrity', 'remediate', 'finalize' );
 	private static $checksums = null;
 
 	/** Start or continue exactly one bounded batch. */
@@ -64,11 +64,39 @@ class ScanBatchRunner {
 		$token = wp_generate_password( 32, false, false );
 		$items = ScanStore::claim_items( $run['run_id'], $scope, $token, self::MAX_ITEMS );
 		self::require_write( false !== $items, 'claim_items_failed' );
+		$recent_items = array();
 		foreach ( $items as $item ) {
 			if ( microtime( true ) - $started >= self::MAX_SECONDS ) { self::require_write( ScanStore::release_claims( $run['run_id'], $scope, $token ), 'claim_release_failed' ); break; }
 			self::process_item( $run, $scope, $item, $token, $started );
 			$run['processed']++;
+
+			$item_path = (string) $item['path'];
+			if ( 'database_integrity' === $scope || in_array( $item['item_type'], array( 'db_table', 'db_post', 'db_option', 'db_check' ), true ) ) {
+				$folder = 'Database WordPress';
+				$file   = str_replace( array( 'db_table:', 'table:', 'db_check:', 'post:', 'option:' ), '', $item_path );
+				if ( 0 === strpos( $item_path, 'db_check:' ) ) {
+					$file = 'Pemeriksaan Integritas (' . $file . ')';
+				}
+			} elseif ( 'folder' === $item['item_type'] || 'directory' === $item['item_type'] ) {
+				$folder = 'Root';
+				$file   = $item_path . '/';
+			} else {
+				$folder = dirname( $item_path );
+				$folder = ( '.' === $folder || empty( $folder ) ) ? 'Root' : $folder . '/';
+				$file   = basename( $item_path );
+			}
+			$run['current_folder'] = $folder;
+			$run['current_file']   = $file;
+			if ( count( $recent_items ) < 8 ) {
+				$recent_items[] = array(
+					'scope'  => $scope,
+					'folder' => $folder,
+					'file'   => $file,
+					'type'   => $item['item_type'],
+				);
+			}
 		}
+		$run['recent_items'] = $recent_items;
 		// The batch lease is refreshed with the token acquired by this request;
 		// never read a potentially replaced lock record back from the database.
 		self::require_write( false !== $lock->refresh( $lock_state['run_id'], $lock_state['fencing_token'] ), 'scan_lock_lost' );
@@ -95,10 +123,23 @@ class ScanBatchRunner {
 				foreach ( $chunk as $path => $hash ) { if ( 0 !== strpos( $path, 'wp-content/' ) ) { self::enqueue_item( $run, $scope, $path, 'core', $hash, self::stat_meta( ABSPATH . $path ) ); } }
 				$cursor['offset'] = $offset + count( $chunk ); $cursor['seeded'] = $cursor['offset'] >= count( $checksums );
 			}
-		} elseif ( in_array( $scope, array( 'core_injected_files', 'uploads_php' ), true ) ) {
-			$root = 'core_injected_files' === $scope ? 'wp-admin' : 'wp-content/uploads';
-			if ( 'core_injected_files' === $scope ) { self::enqueue_item( $run, $scope, 'wp-includes', 'directory', '', array( 'offset' => 0 ) ); }
-			self::enqueue_item( $run, $scope, $root, 'directory', '', array( 'offset' => 0 ) ); $cursor['seeded'] = true;
+		} elseif ( 'core_injected_files' === $scope ) {
+			$checksums = self::checksums();
+			if ( empty( $checksums ) ) {
+				// FAIL-SAFE: Jangan menyemai intruder scan jika daftar checksum core tidak tersedia
+				$run['errors'][] = 'core_checksums_unavailable';
+				$cursor['seeded'] = true;
+			} else {
+				self::enqueue_item( $run, $scope, 'wp-includes', 'directory', '', array( 'offset' => 0 ) );
+				self::enqueue_item( $run, $scope, 'wp-admin', 'directory', '', array( 'offset' => 0 ) );
+				$cursor['seeded'] = true;
+			}
+		} elseif ( 'uploads_php' === $scope ) {
+			self::enqueue_item( $run, $scope, 'wp-content/uploads', 'directory', '', array( 'offset' => 0 ) );
+			$cursor['seeded'] = true;
+		} elseif ( 'database_integrity' === $scope ) {
+			self::seed_database_scope( $run );
+			$cursor['seeded'] = true;
 		} elseif ( 'remediate' === $scope ) {
 			self::seed_remediation( $run ); $cursor['seeded'] = true;
 		}
@@ -107,6 +148,11 @@ class ScanBatchRunner {
 
 	private static function process_item( &$run, $scope, $item, $token, $started ) {
 		$path = (string) $item['path']; $absolute = ABSPATH . ltrim( $path, '/\\'); $metadata = json_decode( $item['metadata'], true ); $metadata = is_array( $metadata ) ? $metadata : array();
+		if ( 'database_integrity' === $scope || in_array( $item['item_type'], array( 'db_table', 'db_post', 'db_option', 'db_check' ), true ) ) {
+			$finding = self::analyze_database_item( $item );
+			self::finish_item( $item, $token, $finding ? 'finding' : 'done', $finding ? $finding : array() );
+			return;
+		}
 		if ( 'directory' === $item['item_type'] ) { return self::discover_directory( $run, $scope, $item, $token, $absolute, $metadata, $started ); }
 		if ( 'remediate' === $scope ) { return self::remediate_item( $item, $token, $metadata ); }
 		if ( 'folder' === $item['item_type'] ) { $finding = self::analyze( $scope, $path, $absolute, $item ); self::finish_item( $item, $token, $finding ? 'finding' : 'done', $finding ? $finding : array() ); return; }
@@ -197,6 +243,9 @@ class ScanBatchRunner {
 		// 5. CORE INJECTED FILES (Intruder files in wp-admin / wp-includes)
 		if ( 'core_injected_files' === $scope ) {
 			$checksums = self::checksums();
+			if ( empty( $checksums ) ) {
+				return false; // FAIL-SAFE MUTLAK: Jangan pernah menuduh file core sebagai penyusup jika daftar resmi tidak tersedia!
+			}
 			return ! isset( $checksums[ $path_norm ] ) ? self::finding( 'core_file', $path_norm, $absolute, 'Suspicious Core Injection', Scanner::scan_file_for_webshell( $absolute ) ) : false;
 		}
 
@@ -249,10 +298,293 @@ class ScanBatchRunner {
 
 	private static function advance_scope( &$run ) { $index = array_search( $run['scope'], self::SCOPES, true ); $run['scope_index'] = false === $index ? count( self::SCOPES ) - 1 : $index + 1; $run['scope'] = self::SCOPES[ $run['scope_index'] ] ?? 'finalize'; $run['cursor'] = array( 'seeded' => false, 'offset' => 0 ); }
 	private static function persist_running( $run ) { $run['status'] = 'running'; $run['next_retry_at'] = 0; $run['batch_number']++; $run['updated_at'] = time(); $run['total'] = self::total_items( $run['run_id'] ); $run['findings_summary'] = array( 'threat_count' => count( self::findings( $run['run_id'] ) ) ); self::require_write( ScanStore::save_run( $run ), 'checkpoint_write_failed' ); update_option( self::RUN_OPTION, $run, false ); self::mark_dashboard_pending( $run ); return self::result( $run, ScanResult::EXECUTION_RUNNING ); }
-	private static function finalize( $run ) { $incomplete = ScanStore::count_run_items( $run['run_id'], array( 'failed', 'skipped', 'queued', 'claimed' ) ); self::require_write( false !== $incomplete, 'final_coverage_query_failed' ); if ( $incomplete > 0 ) { $run['errors'][] = 'incomplete_or_unverifiable_items'; } $findings = self::findings( $run['run_id'] ); $errors = array_values( array_unique( $run['errors'] ?? array() ) ); $coverage = empty( $errors ) ? ScanResult::COVERAGE_COMPLETE : ScanResult::COVERAGE_DEGRADED; $result = array( 'run_id' => $run['run_id'], 'last_scan' => current_time( 'mysql' ), 'status' => empty( $findings ) && empty( $errors ) ? 'safe' : ( empty( $findings ) ? 'degraded' : 'threat' ), 'security_status' => empty( $findings ) ? ( empty( $errors ) ? ScanResult::SECURITY_SAFE : ScanResult::SECURITY_PENDING ) : ScanResult::SECURITY_THREAT, 'coverage_status' => $coverage, 'execution_state' => ScanResult::EXECUTION_COMPLETED, 'scope_errors' => $errors, 'unknown_count' => count( $findings ), 'unknown_folders' => $findings ); self::require_write( self::write_option( 'wp_root_guard_last_scan', $result ), 'last_scan_write_failed' ); self::require_write( self::write_option( 'wp_root_guard_unknown_folders', $findings ), 'finding_option_write_failed' ); if ( 'baseline_candidate' === ( $run['context'] ?? '' ) && 'safe' === $result['security_status'] && 'complete' === $result['coverage_status'] && class_exists( __NAMESPACE__ . '\\Baseline' ) ) { Baseline::generate_pending_baseline( $run['run_id'] ); } $run['status'] = 'completed'; $run['updated_at'] = time(); self::require_write( ScanStore::save_run( $run ), 'run_finalize_failed' ); delete_option( self::RUN_OPTION ); self::update_dashboard_state( $run, 'completed' ); Scanner::notify_scan_findings( $findings ); return $result; }
+	private static function finalize( $run ) {
+		$incomplete = ScanStore::count_run_items( $run['run_id'], array( 'failed', 'skipped', 'queued', 'claimed' ) );
+		self::require_write( false !== $incomplete, 'final_coverage_query_failed' );
+		if ( $incomplete > 0 ) { $run['errors'][] = 'incomplete_or_unverifiable_items'; }
+		$findings = self::findings( $run['run_id'] );
+		$errors = array_values( array_unique( $run['errors'] ?? array() ) );
+		$coverage = empty( $errors ) ? ScanResult::COVERAGE_COMPLETE : ScanResult::COVERAGE_DEGRADED;
+		$result = array(
+			'run_id'          => $run['run_id'],
+			'last_scan'       => current_time( 'mysql' ),
+			'status'          => empty( $findings ) && empty( $errors ) ? 'safe' : ( empty( $findings ) ? 'degraded' : 'threat' ),
+			'security_status' => empty( $findings ) ? ( empty( $errors ) ? ScanResult::SECURITY_SAFE : ScanResult::SECURITY_PENDING ) : ScanResult::SECURITY_THREAT,
+			'coverage_status' => $coverage,
+			'execution_state' => ScanResult::EXECUTION_COMPLETED,
+			'scope_errors'    => $errors,
+			'unknown_count'   => count( $findings ),
+			'unknown_folders' => $findings,
+			'progress'        => array(
+				'scope'          => 'finalize',
+				'scope_index'    => count( self::SCOPES ) - 1,
+				'processed'      => (int) $run['processed'],
+				'total'          => (int) $run['processed'],
+				'current_folder' => 'Selesai',
+				'current_file'   => 'Verifikasi Lengkap',
+				'recent_items'   => array(),
+			),
+		);
+		self::require_write( self::write_option( 'wp_root_guard_last_scan', $result ), 'last_scan_write_failed' );
+		self::require_write( self::write_option( 'wp_root_guard_unknown_folders', $findings ), 'finding_option_write_failed' );
+		if ( 'baseline_candidate' === ( $run['context'] ?? '' ) && 'safe' === $result['security_status'] && 'complete' === $result['coverage_status'] && class_exists( __NAMESPACE__ . '\\Baseline' ) ) {
+			Baseline::generate_pending_baseline( $run['run_id'] );
+		}
+		$run['status'] = 'completed';
+		$run['updated_at'] = time();
+		self::require_write( ScanStore::save_run( $run ), 'run_finalize_failed' );
+		delete_option( self::RUN_OPTION );
+		self::update_dashboard_state( $run, 'completed' );
+		Scanner::notify_scan_findings( $findings );
+		return $result;
+	}
 	private static function findings( $run_id ) { global $wpdb; $table = ScanStore::items_table(); $rows = $wpdb->get_col( $wpdb->prepare( "SELECT metadata FROM {$table} WHERE run_id = %s AND state = 'finding'", $run_id ) ); $out = array(); foreach ( $rows as $row ) { $data = json_decode( $row, true ); if ( is_array( $data ) ) { $out[] = $data; } } return $out; }
 	private static function total_items( $run_id ) { $count = ScanStore::count_run_items( $run_id ); self::require_write( false !== $count, 'total_item_count_failed' ); return $count; }
-	private static function result( $run, $execution ) { return array( 'last_scan' => '', 'status' => 'running', 'security_status' => ScanResult::SECURITY_PENDING, 'coverage_status' => empty( $run['errors'] ) ? ScanResult::COVERAGE_COMPLETE : ScanResult::COVERAGE_DEGRADED, 'execution_state' => $execution, 'unknown_count' => count( self::findings( $run['run_id'] ) ), 'progress' => array( 'scope' => $run['scope'], 'processed' => (int) $run['processed'], 'total' => self::total_items( $run['run_id'] ) ) ); }
+	private static function result( $run, $execution ) {
+		return array(
+			'last_scan'       => '',
+			'status'          => 'running',
+			'security_status' => ScanResult::SECURITY_PENDING,
+			'coverage_status' => empty( $run['errors'] ) ? ScanResult::COVERAGE_COMPLETE : ScanResult::COVERAGE_DEGRADED,
+			'execution_state' => $execution,
+			'unknown_count'   => count( self::findings( $run['run_id'] ) ),
+			'progress'        => array(
+				'scope'          => $run['scope'],
+				'scope_index'    => (int) ( $run['scope_index'] ?? 0 ),
+				'processed'      => (int) $run['processed'],
+				'total'          => max( (int) $run['total'], (int) $run['processed'] ),
+				'current_folder' => $run['current_folder'] ?? '',
+				'current_file'   => $run['current_file'] ?? '',
+				'recent_items'   => $run['recent_items'] ?? array(),
+			),
+		);
+	}
+
+	/**
+	 * Seed database scope: enqueues tables and integrity checks for slot/judol/malware.
+	 */
+	private static function seed_database_scope( &$run ) {
+		global $wpdb;
+
+		// 1. Enqueue all database tables
+		$tables = $wpdb->get_col( 'SHOW TABLES' ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+		if ( is_array( $tables ) ) {
+			foreach ( $tables as $table_name ) {
+				self::enqueue_item( $run, 'database_integrity', 'db_table:' . $table_name, 'db_table', '', array( 'table' => $table_name ) );
+			}
+		}
+
+		// 2. Enqueue deep content inspections
+		self::enqueue_item( $run, 'database_integrity', 'db_check:posts_slot', 'db_check', '', array( 'check' => 'posts_slot' ) );
+		self::enqueue_item( $run, 'database_integrity', 'db_check:posts_hidden', 'db_check', '', array( 'check' => 'posts_hidden' ) );
+		self::enqueue_item( $run, 'database_integrity', 'db_check:options_integrity', 'db_check', '', array( 'check' => 'options_integrity' ) );
+		self::enqueue_item( $run, 'database_integrity', 'db_check:users_integrity', 'db_check', '', array( 'check' => 'users_integrity' ) );
+	}
+
+	/**
+	 * Analyze a claimed database item (table, post spam, option backdoor, or admin check).
+	 */
+	private static function analyze_database_item( $item ) {
+		global $wpdb;
+		$item_type = $item['item_type'] ?? '';
+		$path      = (string) $item['path'];
+		$metadata  = json_decode( $item['metadata'] ?? '{}', true );
+		$metadata  = is_array( $metadata ) ? $metadata : array();
+
+		// A. Database Table Check
+		if ( 'db_table' === $item_type ) {
+			$table_name = $metadata['table'] ?? str_replace( 'db_table:', '', $path );
+			$matched_kw = self::is_rogue_table( $table_name );
+			if ( $matched_kw ) {
+				return self::finding(
+					'database_threat',
+					'Tabel: ' . $table_name,
+					'Database: ' . $table_name,
+					'Tabel Liar / Berbahaya',
+					'Tabel asing tidak terdaftar berindikasi konten judi/backdoor liar (Kata Kunci: "' . $matched_kw . '")'
+				);
+			}
+			return false;
+		}
+
+		// B. Check: Posts Slot Gacor & Judi Online
+		if ( 'db_check:posts_slot' === $path || ( 'db_check' === $item_type && 'posts_slot' === ( $metadata['check'] ?? '' ) ) ) {
+			if ( ! isset( $wpdb->posts ) ) {
+				return false;
+			}
+			$slot_keywords = array(
+				'slot gacor', 'judi online', 'rtp slot', 'sbobet',
+				'pragmatic play', 'maxwin', 'situs slot', 'bandar togel',
+				'poker online', 'agen slot', 'slot88', 'slot deposit',
+				'link gacor', 'judi bola', 'bocoran slot', 'togel online',
+				'slot online', 'zeus olympus'
+			);
+			$likes = array();
+			$params = array();
+			foreach ( $slot_keywords as $kw ) {
+				$likes[] = '(post_title LIKE %s OR post_content LIKE %s)';
+				$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
+				$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
+			}
+			$where = implode( ' OR ', $likes );
+			$sql = "SELECT ID, post_title, post_status FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where}) ORDER BY ID DESC LIMIT 5";
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			if ( ! empty( $rows ) ) {
+				$first = $rows[0];
+				$total_found = count( $rows );
+				$titles = array();
+				foreach ( $rows as $r ) {
+					$titles[] = '#' . $r->ID . ' "' . wp_trim_words( $r->post_title, 4, '...' ) . '"';
+				}
+				return self::finding(
+					'database_threat',
+					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
+					'Database: ' . $wpdb->prefix . 'posts (Ditemukan ' . $total_found . ' post slot)',
+					'Injeksi Konten Slot Gacor',
+					'Ditemukan post mengandung kata kunci judi/slot gacor: ' . implode( ', ', $titles )
+				);
+			}
+			return false;
+		}
+
+		// C. Check: Posts Hidden Malicious Injections (iframe display:none, stealth redirect divs)
+		if ( 'db_check:posts_hidden' === $path || ( 'db_check' === $item_type && 'posts_hidden' === ( $metadata['check'] ?? '' ) ) ) {
+			if ( ! isset( $wpdb->posts ) ) {
+				return false;
+			}
+			$sql = "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
+				post_content LIKE %s OR 
+				post_content LIKE %s OR 
+				post_content LIKE %s OR 
+				post_content LIKE %s
+			) ORDER BY ID DESC LIMIT 5";
+			$params = array(
+				'%<iframe%display:none%',
+				'%<iframe%visibility:hidden%',
+				'%display:none%http%',
+				'%position:absolute;left:-999%http%'
+			);
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			if ( ! empty( $rows ) ) {
+				$first = $rows[0];
+				return self::finding(
+					'database_threat',
+					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
+					'Database: ' . $wpdb->prefix . 'posts -> ID ' . $first->ID,
+					'Injeksi Stealth Iframe / Redirect',
+					'Ditemukan elemen tersembunyi (hidden iframe / invisible spam div) dalam konten post'
+				);
+			}
+			return false;
+		}
+
+		// D. Check: wp_options Integrity (eval, base64_decode, unauthorized redirects)
+		if ( 'db_check:options_integrity' === $path || ( 'db_check' === $item_type && 'options_integrity' === ( $metadata['check'] ?? '' ) ) ) {
+			if ( ! isset( $wpdb->options ) ) {
+				return false;
+			}
+			$sql = "SELECT option_name FROM {$wpdb->options} WHERE (
+				option_name LIKE %s OR 
+				option_name LIKE %s OR 
+				option_value LIKE %s OR 
+				option_value LIKE %s OR 
+				option_value LIKE %s
+			) LIMIT 5";
+			$params = array(
+				'%_eval_%',
+				'%temp_backdoor%',
+				'%eval(base64_decode%',
+				'%eval(gzinflate%',
+				'%str_rot13(base64_decode%'
+			);
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			if ( ! empty( $rows ) ) {
+				$first = $rows[0];
+				return self::finding(
+					'database_threat',
+					'wp_options [' . $first->option_name . ']',
+					'Database: ' . $wpdb->prefix . 'options -> ' . $first->option_name,
+					'Opsi Berbahaya (Backdoor)',
+					'Opsi database terdeteksi mengandung kode obfuscated eksekusi dinamis (eval/base64)'
+				);
+			}
+			return false;
+		}
+
+		// E. Check: Rogue Administrators in wp_users
+		if ( 'db_check:users_integrity' === $path || ( 'db_check' === $item_type && 'users_integrity' === ( $metadata['check'] ?? '' ) ) ) {
+			if ( ! isset( $wpdb->users ) ) {
+				return false;
+			}
+			$suspicious_names = array( 'admin1', 'admin2', 'system_admin', 'temp_admin', 'backup_admin', 'support_wp', 'root_admin' );
+			$likes = array();
+			$params = array();
+			foreach ( $suspicious_names as $name ) {
+				$likes[] = 'user_login LIKE %s';
+				$params[] = '%' . $wpdb->esc_like( $name ) . '%';
+			}
+			$sql = "SELECT ID, user_login, user_email FROM {$wpdb->users} WHERE (" . implode( ' OR ', $likes ) . ") LIMIT 5";
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			if ( ! empty( $rows ) ) {
+				$first = $rows[0];
+				return self::finding(
+					'database_threat',
+					'wp_users [ID: ' . $first->ID . ' - ' . $first->user_login . ']',
+					'Database: ' . $wpdb->prefix . 'users -> ID ' . $first->ID,
+					'Akun Pengguna Mencurigakan',
+					'Terdeteksi akun pengguna dengan pola penamaan administrator liar: ' . $first->user_login . ' (' . $first->user_email . ')'
+				);
+			}
+			return false;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Check if a table name is rogue or malicious.
+	 *
+	 * @param string $table_name Table name to test.
+	 * @return string|false Matched keyword or false if safe.
+	 */
+	public static function is_rogue_table( $table_name ) {
+		global $wpdb;
+		$prefix = isset( $wpdb->prefix ) ? $wpdb->prefix : 'wp_';
+		$core_tables = array(
+			$prefix . 'commentmeta',
+			$prefix . 'comments',
+			$prefix . 'links',
+			$prefix . 'options',
+			$prefix . 'postmeta',
+			$prefix . 'posts',
+			$prefix . 'termmeta',
+			$prefix . 'terms',
+			$prefix . 'term_relationships',
+			$prefix . 'term_taxonomy',
+			$prefix . 'usermeta',
+			$prefix . 'users',
+			$prefix . 'wprg_scan_runs',
+			$prefix . 'wprg_scan_items',
+			$prefix . 'wprg_scan_findings',
+			$prefix . 'wprg_quarantine_items',
+		);
+		$lower = strtolower( (string) $table_name );
+		if ( in_array( $lower, $core_tables, true ) ) {
+			return false;
+		}
+
+		$suspicious_keywords = array(
+			'slot', 'gacor', 'judol', 'poker', 'casino', 'sbobet',
+			'pragmatic', 'maxwin', 'zeus', 'togel', 'hack', 'backdoor',
+			'temp_admin', 'wp_eval', 'shell', 'wso'
+		);
+		foreach ( $suspicious_keywords as $kw ) {
+			if ( false !== strpos( $lower, $kw ) ) {
+				return $kw;
+			}
+		}
+		return false;
+	}
 	private static function checkpoint( $run, $error ) { $run['errors'][] = $error; $run['status'] = 'retry_wait'; $run['next_retry_at'] = time() + 60; $run['updated_at'] = time(); self::require_write( ScanStore::save_run( $run ), 'deferred_checkpoint_write_failed' ); update_option( self::RUN_OPTION, $run, false ); self::mark_dashboard_pending( $run ); return self::deferred( $error, $run ); }
 	private static function deferred( $error = 'deferred', $run = array() ) { return array( 'run_id' => $run['run_id'] ?? '', 'status' => 'deferred', 'security_status' => ScanResult::SECURITY_PENDING, 'coverage_status' => ScanResult::COVERAGE_DEGRADED, 'execution_state' => ScanResult::EXECUTION_DEFERRED, 'unknown_count' => 0, 'error' => sanitize_key( $error ), 'retry_at' => $run['next_retry_at'] ?? 0 ); }
 	private static function failed( $error ) { return array( 'status' => 'failed', 'security_status' => ScanResult::SECURITY_PENDING, 'coverage_status' => ScanResult::COVERAGE_FAILED, 'execution_state' => ScanResult::EXECUTION_FAILED, 'unknown_count' => 0, 'error' => $error ); }

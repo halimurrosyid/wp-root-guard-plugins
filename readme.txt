@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.5.0
+Stable tag: 3.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,21 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.6.1 =
+* Kekebalan False Positive Core Checksums (Multi-Tier Fallback): Menambahkan sistem resolusi berlapis untuk WordPress.org Core Checksums API (Locale -> en_US fallback -> Clean Version -> Core Built-in Fallback -> Safe Degradation). Mencegah ribuan berkas resmi wp-includes/ dan wp-admin/ salah terdeteksi sebagai penyusup jika koneksi API localized timeout atau mengembalikan 404.
+* Fail-Safe Core Injected Files: Menjamin bahwa pemindai berkas penyusup core tidak akan pernah menandai berkas sistem sebagai ancaman ketika checksum resmi tidak tersedia (fail-safe immunity).
+* Perbaikan Pola Deteksi Webshell: Memperbaiki regex callback webshell agar tidak salah mendeteksi pemanggilan fungsi standar WordPress (seperti call_user_func pada formatting.php atau class-wp-block-type.php).
+* Tombol Pembersihan Cepat Spam Slot (1-Click Slot Purge): Menambahkan tombol "Bersihkan Semua Konten Slot (Purge All Slot Spam)" di tabel database untuk menghapus seluruh artikel/post judi slot secara instan.
+* Aksi Massal Database (Bulk Delete DB): Memungkinkan penghapusan massal ancaman tabel dan post slot melalui bar aksi massal dasbor.
+* Visualisasi Live Folder & File Ticker: Menampilkan progres dinamis (0-100%) dan nama berkas yang sedang dipindai secara real-time.
+
+= 3.6.0 =
+* Live Folder & File Scanning Streamer: Menampilkan secara real-time nama folder dan berkas yang sedang diperiksa di terminal ticker, visualisasi progres akurat (100%), dan peningkatan throughput batch pemrosesan hingga 250 berkas/batch untuk kecepatan scan 2x lebih cepat tanpa macet atau freeze.
+* Pemindai Integritas Database & Slot Gacor (Database Guard): Tahap 5 pemindaian baru yang menginspeksi tabel database WordPress, mendeteksi tabel liar/asing, injeksi konten spam slot gacor & judi online di wp_posts, serta skrip backdoor/eval terselubung di wp_options.
+* 5 Pilar Verifikasi Keamanan: Menambahkan Pilar Integritas Database ke dalam Hero Celebration Banner dasbor (0 tabel liar & bebas slot gacor).
+* Remediasi Cepat Database: Menyediakan tombol pembersihan langsung untuk menghapus konten slot terinjeksi atau men-drop tabel berbahaya dari dasbor admin.
+* Auto-Resume Resilient Scanner: Pemindaian yang sedang berjalan di latar belakang akan otomatis tersambung kembali dan melanjutkan tampilan visual jika halaman admin di-refresh.
 
 = 3.5.0 =
 * Tampilan Baru Dark-Mode Real-Time Scanner: Panel pemindaian interaktif bergaya dark tech cyber radar dengan animasi riak radar, indikator 4 tahapan pemeriksaan aktif, persentase digital presisi, dan monitor berkas monospace live ticker.
