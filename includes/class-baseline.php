@@ -182,10 +182,9 @@ class Baseline {
 	 * @return bool True jika baseline berhasil disinkronkan.
 	 */
 	public static function handle_core_update( $new_version = '', $source = 'hook' ) {
-		// A core update changes official checksums, not the trusted root
-		// filesystem baseline. Rebuilding here could bless a compromised root.
 		self::invalidate_checksums_cache();
-		Logger::log( __( 'Core WordPress diperbarui; baseline root tidak diubah dan menunggu review administrator.', 'wp-root-guard' ), sanitize_text_field( $source ), 'Info' );
+		$version = ! empty( $new_version ) ? $new_version : self::get_current_wp_version();
+		self::reconcile_baseline_with_core_update( $version, $source );
 		return true;
 	}
 
@@ -302,7 +301,103 @@ class Baseline {
 			return array();
 		}
 
+		// Reconcile if WordPress was updated to a newer version (Req 1)
+		if ( ! $skip_fallback && ! empty( $data['wp_version'] ) ) {
+			$current_wp = self::get_current_wp_version();
+			if ( ! empty( $current_wp ) && version_compare( (string) $data['wp_version'], (string) $current_wp, '!=' ) ) {
+				$reconciled = self::reconcile_baseline_with_core_update( $current_wp, 'version_detection' );
+				if ( is_array( $reconciled ) && ! empty( $reconciled ) ) {
+					$data = $reconciled;
+				}
+			}
+		}
+
 		self::$memory_cache = $data;
+		return $data;
+	}
+
+	/**
+	 * Rekonsiliasi baseline root dengan versi WordPress core terbaru.
+	 * Memastikan file inti WordPress versi baru tidak dianggap sebagai ancaman (Req 1).
+	 *
+	 * @param string $new_version Versi target WordPress baru.
+	 * @param string $source      Sumber pemicu pembaruan.
+	 * @return array|false Data baseline baru atau false jika gagal.
+	 */
+	public static function reconcile_baseline_with_core_update( $new_version = '', $source = 'hook' ) {
+		$target_version = ! empty( $new_version ) ? (string) $new_version : self::get_current_wp_version();
+		if ( empty( $target_version ) ) {
+			return false;
+		}
+
+		self::clear_memory_cache();
+		self::invalidate_checksums_cache();
+
+		// Baca baseline aktif saat ini (skip_fallback agar tidak rekursif)
+		$file_path = self::get_baseline_file();
+		if ( empty( $file_path ) || ! file_exists( $file_path ) ) {
+			return false;
+		}
+
+		$content = @file_get_contents( $file_path );
+		if ( false === $content || '' === trim( $content ) ) {
+			return false;
+		}
+
+		$data = json_decode( $content, true );
+		if ( ! is_array( $data ) || ! self::verify( $data ) ) {
+			return false;
+		}
+
+		// Ambil checksums resmi untuk versi baru
+		$checksums       = class_exists( __NAMESPACE__ . '\\Scanner' ) ? Scanner::get_core_checksums() : false;
+		$current_files   = self::scan_root_files();
+		$current_folders = self::scan_root_folders();
+
+		$updated_files = isset( $data['files'] ) && is_array( $data['files'] ) ? $data['files'] : array();
+
+		// Perbarui atau tambahkan hash file resmi WordPress di root
+		foreach ( $current_files as $filename => $hash ) {
+			if ( is_array( $checksums ) && isset( $checksums[ $filename ] ) ) {
+				$updated_files[ $filename ] = $hash;
+			} elseif ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_critical_exempt( $filename ) ) {
+				$updated_files[ $filename ] = $hash;
+			}
+		}
+
+		$old_version        = isset( $data['wp_version'] ) ? (string) $data['wp_version'] : '';
+		$data['wp_version'] = $target_version;
+		$data['folders']    = array_values( array_unique( array_merge( isset( $data['folders'] ) && is_array( $data['folders'] ) ? $data['folders'] : array(), $current_folders ) ) );
+		$data['files']      = $updated_files;
+		$data['updated_at'] = function_exists( 'current_time' ) ? current_time( 'mysql' ) : gmdate( 'Y-m-d H:i:s' );
+		$data['hmac']       = self::sign( $data );
+
+		$json = function_exists( 'wp_json_encode' )
+			? wp_json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES )
+			: json_encode( $data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+
+		$written = class_exists( __NAMESPACE__ . '\\AtomicWriter' )
+			? AtomicWriter::write( $file_path, $json, 0600 )
+			: @file_put_contents( $file_path, $json );
+
+		if ( is_wp_error( $written ) || false === $written ) {
+			return false;
+		}
+
+		self::$memory_cache = $data;
+
+		Logger::log(
+			sprintf(
+				/* translators: 1: versi lama, 2: versi baru, 3: pemicu */
+				esc_html__( 'WordPress core diperbarui dari v%1$s ke v%2$s (pemicu: %3$s). Baseline otomatis disinkronkan.', 'wp-root-guard' ),
+				! empty( $old_version ) ? $old_version : esc_html__( 'lama', 'wp-root-guard' ),
+				$target_version,
+				$source
+			),
+			'WordPress Core',
+			'Safe'
+		);
+
 		return $data;
 	}
 

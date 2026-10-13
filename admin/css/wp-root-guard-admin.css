@@ -97,16 +97,35 @@
 /* Status Card Colors */
 .rg-status-card {
 	border-top: 5px solid #cbd5e1;
+	border-radius: 12px;
+	box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+	transition: all 0.3s ease;
 }
 
 .rg-status-safe {
 	border-top: 5px solid #10b981; /* Emerald Green */
-	background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100px);
+	background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 50%, #ffffff 100%);
+	border-color: #a7f3d0;
+	box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.12), 0 4px 10px -2px rgba(16, 185, 129, 0.05);
 }
 
 .rg-status-threat {
 	border-top: 5px solid #ef4444; /* Vivid Red */
-	background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100px);
+	background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 50%, #ffffff 100%);
+	border-color: #fecaca;
+	box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.15), 0 4px 10px -2px rgba(239, 68, 68, 0.06);
+}
+
+.rg-status-pending {
+	border-top: 5px solid #0284c7; /* Sky Blue */
+	background: linear-gradient(135deg, #f0f9ff 0%, #f8fafc 50%, #ffffff 100%);
+	border-color: #bae6fd;
+}
+
+.rg-status-scanning {
+	border-top: 5px solid #3b82f6; /* Blue Pulse */
+	background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 50%, #ffffff 100%);
+	border-color: #bfdbfe;
 }
 
 .rg-status-badge {
@@ -114,7 +133,7 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	padding: 20px 16px;
+	padding: 24px 20px;
 	gap: 12px;
 }
 
@@ -122,11 +141,12 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	font-size: 54px;
+	font-size: 58px;
 	line-height: 1;
 	margin: 0;
 	padding: 0;
 	animation: pulse 2.5s infinite ease-in-out;
+	filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.08));
 }
 
 @keyframes pulse {
@@ -137,10 +157,10 @@
 
 .rg-status-text {
 	display: inline-block;
-	font-size: 32px;
+	font-size: 26px;
 	font-weight: 800;
 	line-height: 1.2;
-	letter-spacing: 2px;
+	letter-spacing: 1px;
 	margin: 0;
 }
 
@@ -152,12 +172,22 @@
 	color: #dc2626;
 }
 
+.text-info {
+	color: #0369a1;
+}
+
 .rg-status-desc {
-	color: #64748b;
+	color: #475569;
 	font-size: 14px;
-	line-height: 1.5;
+	line-height: 1.6;
 	margin: 0;
-	max-width: 360px;
+	max-width: 420px;
+}
+
+/* Summary Card */
+.rg-summary-card {
+	border-radius: 12px;
+	border-top: 5px solid #3b82f6;
 }
 
 /* Summary Table */
@@ -176,26 +206,68 @@
 
 .rg-summary-table th {
 	text-align: left;
-	padding: 12px 0;
+	padding: 11px 0;
 	font-weight: 500;
 	color: #64748b;
-	font-size: 14px;
+	font-size: 13px;
 }
 
 .rg-summary-table td {
 	text-align: right;
-	padding: 12px 0;
+	padding: 11px 0;
 	color: #0f172a;
-	font-size: 14px;
+	font-size: 13px;
 }
 
 /* Button & Action Bar Styling */
 .rg-actions-bar {
 	display: flex;
-	gap: 12px;
+	gap: 14px;
 	margin-bottom: 25px;
 	align-items: center;
 	flex-wrap: wrap;
+	padding: 16px 20px;
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.rg-actions-bar .button-primary {
+	background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+	border: none !important;
+	border-radius: 8px !important;
+	padding: 10px 24px !important;
+	font-size: 14px !important;
+	font-weight: 700 !important;
+	height: auto !important;
+	box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+	text-shadow: none !important;
+	transition: all 0.2s ease !important;
+}
+
+.rg-actions-bar .button-primary:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45) !important;
+	background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+}
+
+.rg-actions-bar .button-secondary {
+	border-radius: 8px !important;
+	padding: 10px 18px !important;
+	font-size: 13px !important;
+	font-weight: 600 !important;
+	height: auto !important;
+	border: 1px solid #cbd5e1 !important;
+	background: #f8fafc !important;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+	transition: all 0.2s ease !important;
+}
+
+.rg-actions-bar .button-secondary:hover {
+	background: #ffffff !important;
+	border-color: #94a3b8 !important;
+	transform: translateY(-1px);
 }
 
 .button-link-delete {
@@ -296,16 +368,27 @@
 	border: 1px solid #a7f3d0;
 }
 
+.badge-info {
+	background-color: #e0f2fe;
+	color: #0369a1;
+	border: 1px solid #bae6fd;
+}
+
 /* Empty States */
 .rg-empty-message {
 	text-align: center;
-	padding: 30px 15px;
-	color: #64748b;
+	padding: 32px 20px;
+	background: #f8fafc;
+	border: 1px dashed #cbd5e1;
+	border-radius: 8px;
+	margin: 10px 0;
+	color: #475569;
 }
 
 .rg-empty-message p {
 	margin: 0;
 	font-size: 14px;
+	font-weight: 500;
 }
 
 code {

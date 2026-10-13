@@ -50,30 +50,115 @@ class Settings {
 	 */
 	public static function get_user_whitelist() {
 		$whitelist = get_option( 'wp_root_guard_whitelist', array() );
-		return is_array( $whitelist ) ? $whitelist : array();
+		if ( ! is_array( $whitelist ) ) {
+			return array();
+		}
+		return array_values( array_unique( array_map( function( $item ) {
+			return str_replace( '\\', '/', (string) $item );
+		}, $whitelist ) ) );
 	}
 
 	/**
-	 * Menambahkan folder ke whitelist kustom user.
+	 * Daftar file konfigurasi dan sistem kritis yang otomatis selalu di-whitelist
+	 * dan DIKECUALIKAN dari peringatan perubahan atau auto-karantina.
 	 *
-	 * @param string $folder Nama folder yang ingin dipercayai.
+	 * @return array
+	 */
+	public static function get_critical_exempt_files() {
+		return array(
+			'.htaccess',
+			'wp-config.php',
+			'web.config',
+			'.user.ini',
+			'robots.txt',
+		);
+	}
+
+	/**
+	 * Memeriksa apakah suatu file merupakan file sistem yang dikecualikan dari peringatan perubahan.
+	 *
+	 * @param string $path Nama file atau path relatif.
+	 * @return bool
+	 */
+	public static function is_critical_exempt( $path ) {
+		$normalized = strtolower( trim( str_replace( '\\', '/', (string) $path ), '/' ) );
+		$filename   = basename( $normalized );
+		$exempt     = self::get_critical_exempt_files();
+		return in_array( $filename, $exempt, true ) || in_array( $normalized, $exempt, true );
+	}
+
+	/**
+	 * Menambahkan folder/berkas ke whitelist kustom user dan menghapus temuan aktifnya.
+	 *
+	 * @param string $folder Nama folder atau berkas yang ingin dipercayai.
 	 * @return bool True jika berhasil ditambahkan, false jika sebaliknya.
 	 */
 	public static function add_to_whitelist( $folder ) {
-		$folder = sanitize_text_field( trim( $folder ) );
+		$folder = sanitize_text_field( trim( str_replace( '\\', '/', (string) $folder ) ) );
 		if ( empty( $folder ) ) {
 			return false;
 		}
 
 		$whitelist = self::get_user_whitelist();
 
-		// Jika folder sudah ada di whitelist atau default whitelist, return true.
-		if ( in_array( $folder, $whitelist, true ) || in_array( $folder, self::get_default_whitelist(), true ) ) {
-			return true;
+		// Jika belum ada di whitelist, tambahkan
+		if ( ! in_array( $folder, $whitelist, true ) && ! in_array( $folder, self::get_default_whitelist(), true ) ) {
+			$whitelist[] = $folder;
+			update_option( 'wp_root_guard_whitelist', array_values( array_unique( $whitelist ) ) );
 		}
 
-		$whitelist[] = $folder;
-		return update_option( 'wp_root_guard_whitelist', $whitelist );
+		// Bersihkan seketika dari daftar ancaman aktif & jejak notifikasi
+		self::dismiss_threat_for_item( $folder );
+
+		return true;
+	}
+
+	/**
+	 * Menghapus suatu item dari daftar ancaman aktif dan daftar notifikasi anti-spam
+	 * agar tidak pernah memunculkan peringatan atau notifikasi lagi setelah dipercayai.
+	 *
+	 * @param string $name Nama folder atau file.
+	 * @return void
+	 */
+	public static function dismiss_threat_for_item( $name ) {
+		$name_norm = strtolower( trim( str_replace( '\\', '/', (string) $name ), '/' ) );
+
+		// 1. Bersihkan dari wp_root_guard_unknown_folders
+		$unknown = get_option( 'wp_root_guard_unknown_folders', array() );
+		if ( is_array( $unknown ) ) {
+			$filtered = array();
+			foreach ( $unknown as $item ) {
+				$item_name = isset( $item['name'] ) ? strtolower( trim( str_replace( '\\', '/', (string) $item['name'] ), '/' ) ) : '';
+				if ( $item_name !== $name_norm && basename( $item_name ) !== $name_norm ) {
+					$filtered[] = $item;
+				}
+			}
+			update_option( 'wp_root_guard_unknown_folders', $filtered, false );
+
+			// Perbarui metadata pemindaian terakhir
+			$last_scan = get_option( 'wp_root_guard_last_scan', array() );
+			if ( is_array( $last_scan ) ) {
+				$last_scan['unknown_count']   = count( $filtered );
+				$last_scan['unknown_folders'] = $filtered;
+				if ( 0 === count( $filtered ) ) {
+					$last_scan['status']          = 'safe';
+					$last_scan['security_status'] = 'safe';
+				}
+				update_option( 'wp_root_guard_last_scan', $last_scan, false );
+			}
+		}
+
+		// 2. Bersihkan dari wp_root_guard_notified_threats
+		$notified = get_option( 'wp_root_guard_notified_threats', array() );
+		if ( is_array( $notified ) ) {
+			$clean_notified = array();
+			foreach ( $notified as $key ) {
+				if ( is_string( $key ) && false === stripos( $key, ':' . $name_norm ) ) {
+					$clean_notified[] = $key;
+				}
+			}
+			update_option( 'wp_root_guard_notified_threats', array_values( $clean_notified ), false );
+		}
 	}
 
 	/**
@@ -83,7 +168,7 @@ class Settings {
 	 * @return bool True jika berhasil dihapus, false jika sebaliknya.
 	 */
 	public static function remove_from_whitelist( $folder ) {
-		$folder = sanitize_text_field( trim( $folder ) );
+		$folder = sanitize_text_field( trim( str_replace( '\\', '/', (string) $folder ) ) );
 		if ( empty( $folder ) ) {
 			return false;
 		}
@@ -126,6 +211,7 @@ class Settings {
 			'xmlrpc.php',
 			'.htaccess',
 			'web.config',
+			'.user.ini',
 			'robots.txt',
 			'favicon.ico',
 		);

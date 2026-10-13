@@ -1034,24 +1034,34 @@ class Admin {
 				<div class="rg-dashboard-grid">
 					
 					<!-- STATUS CARD -->
-					<div id="rg-status-card" class="rg-card rg-status-card <?php echo 'safe' === $results['status'] && $protection_status_ok ? 'rg-status-safe' : 'rg-status-threat'; ?>">
+					<?php
+					$has_last_scan = ! empty( $results['last_scan'] );
+					$is_threat     = ( $unknown_count > 0 || 'threat' === $dashboard_status );
+					$is_scanning   = ( 'running' === $dashboard_status || ( isset( $results['execution_state'] ) && 'running' === $results['execution_state'] ) );
+					$card_class    = $is_threat ? 'rg-status-threat' : ( $is_scanning ? 'rg-status-scanning' : ( $has_last_scan ? 'rg-status-safe' : 'rg-status-pending' ) );
+					?>
+					<div id="rg-status-card" class="rg-card rg-status-card <?php echo esc_attr( $card_class ); ?>">
 						<div class="rg-card-header">
-							<h2><?php esc_html_e( 'Status Perlindungan', 'wp-root-guard' ); ?></h2>
+							<h2><?php esc_html_e( 'Status Keamanan Website', 'wp-root-guard' ); ?></h2>
 						</div>
 						<div class="rg-card-body text-center">
 							<div class="rg-status-badge">
-								<?php if ( 'threat' === $dashboard_status ) : ?>
-									<span class="rg-icon-large">⚠️</span>
-									<span class="rg-status-text text-danger"><?php esc_html_e( 'BAHAYA', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Terdeteksi ancaman berkas/folder asing atau modifikasi core aktif!', 'wp-root-guard' ); ?></p>
-								<?php elseif ( ! $protection_status_ok || 'safe' !== $dashboard_status ) : ?>
-									<span class="rg-icon-large">⏱️</span>
-									<span class="rg-status-text text-danger"><?php esc_html_e( 'PERLU PERHATIAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Scan belum membuktikan seluruh scope, scheduler, dan server guard berjalan normal.', 'wp-root-guard' ); ?></p>
+								<?php if ( $is_threat ) : ?>
+									<span class="rg-icon-large">🚨</span>
+									<span class="rg-status-text text-danger"><?php esc_html_e( 'PERLU TINDAKAN', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php printf( /* translators: %d: jumlah temuan */ esc_html__( 'Ditemukan %d berkas/folder asing atau perubahan core yang memerlukan peninjauan Anda.', 'wp-root-guard' ), $unknown_count ); ?></p>
+								<?php elseif ( $is_scanning ) : ?>
+									<span class="rg-icon-large">⏳</span>
+									<span class="rg-status-text text-info"><?php esc_html_e( 'SEDANG MEMINDAI...', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php esc_html_e( 'Pemindaian menyeluruh sedang berjalan di latar belakang.', 'wp-root-guard' ); ?></p>
+								<?php elseif ( ! $has_last_scan ) : ?>
+									<span class="rg-icon-large">🔍</span>
+									<span class="rg-status-text text-info"><?php esc_html_e( 'BELUM DIPINDAI', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php esc_html_e( 'Klik tombol "Pindai Sekarang" di bawah untuk memeriksa kebersihan direktori root & integritas WordPress Anda.', 'wp-root-guard' ); ?></p>
 								<?php else : ?>
 									<span class="rg-icon-large">🛡️</span>
-									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN', 'wp-root-guard' ); ?></span>
-									<p class="rg-status-desc"><?php esc_html_e( 'Tidak ada folder, berkas asing, atau berkas core bermasalah yang terdeteksi.', 'wp-root-guard' ); ?></p>
+									<span class="rg-status-text text-safe"><?php esc_html_e( 'AMAN & TERLINDUNGI', 'wp-root-guard' ); ?></span>
+									<p class="rg-status-desc"><?php esc_html_e( 'Website Anda dalam kondisi bersih. Tidak ada ancaman berbahaya, webshell, atau berkas asing terdeteksi.', 'wp-root-guard' ); ?></p>
 								<?php endif; ?>
 							</div>
 						</div>
@@ -1060,47 +1070,69 @@ class Admin {
 					<!-- SUMMARY CARD -->
 					<div id="rg-summary-card" class="rg-card rg-summary-card">
 						<div class="rg-card-header">
-							<h2><?php esc_html_e( 'Ringkasan Sistem', 'wp-root-guard' ); ?></h2>
+							<h2><?php esc_html_e( 'Ringkasan Perlindungan', 'wp-root-guard' ); ?></h2>
 						</div>
 						<div class="rg-card-body">
 							<table class="rg-summary-table">
 								<tr>
-									<th><?php esc_html_e( 'Item Terlindungi (Baseline + User Whitelist):', 'wp-root-guard' ); ?></th>
-									<td><strong><?php echo esc_html( $protected_count ); ?></strong></td>
+									<th><?php esc_html_e( 'Item Terlindungi (Baseline + Whitelist):', 'wp-root-guard' ); ?></th>
+									<td><strong><?php echo esc_html( number_format_i18n( $protected_count ) ); ?></strong> <span class="rg-badge badge-safe"><?php esc_html_e( 'Aktif', 'wp-root-guard' ); ?></span></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Item Whitelisted (Default + Kustom):', 'wp-root-guard' ); ?></th>
-									<td><strong><?php echo esc_html( $whitelisted_count ); ?></strong></td>
+									<th><?php esc_html_e( 'Berkas & Folder Whitelist:', 'wp-root-guard' ); ?></th>
+									<td><strong><?php echo esc_html( number_format_i18n( $whitelisted_count ) ); ?></strong></td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Folder/Berkas Asing Terdeteksi:', 'wp-root-guard' ); ?></th>
-									<td><strong class="<?php echo $unknown_count > 0 ? 'text-danger' : ''; ?>"><?php echo esc_html( $unknown_count ); ?></strong></td>
+									<th><?php esc_html_e( 'Ancaman / Berkas Asing:', 'wp-root-guard' ); ?></th>
+									<td>
+										<?php if ( $unknown_count > 0 ) : ?>
+											<span class="rg-badge badge-danger"><?php echo esc_html( $unknown_count ); ?> <?php esc_html_e( 'Temuan', 'wp-root-guard' ); ?></span>
+										<?php else : ?>
+											<span class="rg-badge badge-safe">0 (<?php esc_html_e( 'Bersih', 'wp-root-guard' ); ?>)</span>
+										<?php endif; ?>
+									</td>
 								</tr>
 								<tr>
-									<th><?php esc_html_e( 'Item dalam Karantina:', 'wp-root-guard' ); ?></th>
-									<td><strong><?php echo esc_html( $quarantine_count ); ?></strong></td>
+									<th><?php esc_html_e( 'Berkas di Karantina:', 'wp-root-guard' ); ?></th>
+									<td><strong><?php echo esc_html( number_format_i18n( $quarantine_count ) ); ?></strong></td>
+								</tr>
+								<tr>
+									<th><?php esc_html_e( 'Cakupan Pemindaian (Coverage):', 'wp-root-guard' ); ?></th>
+									<td>
+										<span class="rg-badge <?php echo 'complete' === $coverage_status ? 'badge-safe' : 'badge-warning'; ?>">
+											<?php echo esc_html( 'complete' === $coverage_status ? __( 'Lengkap (100%)', 'wp-root-guard' ) : ucfirst( $coverage_status ) ); ?>
+										</span>
+									</td>
+								</tr>
+								<tr>
+									<th><?php esc_html_e( 'Uploads Execution Guard:', 'wp-root-guard' ); ?></th>
+									<td>
+										<span class="rg-badge <?php echo 'verified' === $guard_status ? 'badge-safe' : 'badge-info'; ?>">
+											<?php echo esc_html( 'verified' === $guard_status ? __( 'Aktif & Terproteksi', 'wp-root-guard' ) : __( 'Standar Web Server', 'wp-root-guard' ) ); ?>
+										</span>
+									</td>
 								</tr>
 								<tr>
 									<th><?php esc_html_e( 'Pemindaian Terakhir:', 'wp-root-guard' ); ?></th>
 									<td><?php echo esc_html( $last_scan_time ); ?></td>
 								</tr>
-					<tr>
-						<th><?php esc_html_e( 'Pemindaian Berikutnya:', 'wp-root-guard' ); ?></th>
-						<td><?php echo esc_html( $schedule_status['is_due'] ? ( ! empty( $schedule_status['traffic_fallback'] ) ? esc_html__( 'Menunggu request website', 'wp-root-guard' ) : esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) ) : $next_scan_time ); ?></td>
-					</tr>
+								<tr>
+									<th><?php esc_html_e( 'Pemindaian Berikutnya:', 'wp-root-guard' ); ?></th>
+									<td><?php echo esc_html( $schedule_status['is_due'] ? ( ! empty( $schedule_status['traffic_fallback'] ) ? esc_html__( 'Menunggu request website', 'wp-root-guard' ) : esc_html__( 'Menunggu pemicu WP-Cron', 'wp-root-guard' ) ) : $next_scan_time ); ?></td>
+								</tr>
 								<tr>
 									<th><?php esc_html_e( 'Status Scheduler:', 'wp-root-guard' ); ?></th>
-						<td>
-							<strong class="<?php echo 'healthy' === $scheduler_status || 'running' === $scheduler_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( $scheduler_label ); ?></strong>
-							<?php if ( ! in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true ) ) : ?>
-								<form method="post" action="" style="display: inline-block; margin-left: 8px;">
-									<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
-									<input type="hidden" name="rg_action" value="repair_cron">
-									<button type="submit" class="button button-small"><?php esc_html_e( 'Perbaiki Jadwal', 'wp-root-guard' ); ?></button>
-								</form>
-							<?php endif; ?>
-						</td>
-					</tr>
+									<td>
+										<strong class="<?php echo in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true ) ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( $scheduler_label ); ?></strong>
+										<?php if ( ! in_array( $scheduler_status, array( 'healthy', 'running', 'external' ), true ) ) : ?>
+											<form method="post" action="" style="display: inline-block; margin-left: 8px;">
+												<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
+												<input type="hidden" name="rg_action" value="repair_cron">
+												<button type="submit" class="button button-small"><?php esc_html_e( 'Perbaiki Jadwal', 'wp-root-guard' ); ?></button>
+											</form>
+										<?php endif; ?>
+									</td>
+								</tr>
 							</table>
 						</div>
 					</div>
@@ -1231,14 +1263,6 @@ class Admin {
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
 										<th style="width: 150px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
-								<tr>
-									<th><?php esc_html_e( 'Coverage Scan:', 'wp-root-guard' ); ?></th>
-									<td><strong class="<?php echo 'complete' === $coverage_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( ucfirst( $coverage_status ) ); ?></strong></td>
-								</tr>
-								<tr>
-									<th><?php esc_html_e( 'Uploads Execution Guard:', 'wp-root-guard' ); ?></th>
-									<td><strong class="<?php echo 'verified' === $guard_status ? 'text-safe' : 'text-danger'; ?>"><?php echo esc_html( ucfirst( $guard_status ) ); ?></strong></td>
-								</tr>
 								</thead>
 								<tbody>
 									<?php foreach ( $active_folders as $folder ) : ?>

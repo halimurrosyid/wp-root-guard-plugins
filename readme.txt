@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.3.0
+Stable tag: 3.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,14 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.4.0 =
+* Kompatibilitas Pembaruan Core WordPress: Verifikasi file root otomatis mencocokkan checksum resmi WordPress.org API untuk versi aktif, mencegah false positive saat rilis WordPress baru.
+* Normalisasi CRLF/LF: Menghilangkan false positive hash akibat perbedaan sistem operasi atau git line-endings.
+* Auto-Reconcile Baseline: Sinkronisasi otomatis file dan hash baseline root saat terjadi pembaruan core WordPress tanpa merusak integritas verifikasi HMAC.
+* Proteksi Kritis .htaccess & wp-config.php: Mengecualikan file konfigurasi vital dari ancaman modifikasi dan memblokir keras upaya karantina yang dapat merusak koneksi database atau permalink.
+* Penanganan Whitelist Persisten: Item yang telah di-whitelist langsung dibersihkan dari temuan aktif dan tidak akan dimunculkan kembali pada pemindaian berikutnya.
+* Redesain UI/UX Modern & Ramah Pengguna Awam: Memperbaiki tata letak tabel dashboard, status card hijau AMAN & TERLINDUNGI yang menenangkan, serta styling CSS modern.
 
 = 3.3.0 =
 * P0 security hardening: status scan memisahkan security, coverage, dan execution state sehingga scope gagal tidak lagi dilaporkan sebagai aman.

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Packaging WordPress Plugin WP Root Guard ke file ZIP produksi.
 

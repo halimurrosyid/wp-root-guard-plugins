@@ -342,6 +342,19 @@ class Scanner {
 		foreach ( $current_files as $file => $current_hash ) {
 			$file_path = ABSPATH . $file;
 
+			// Req 2 & 3: Abaikan berkas konfigurasi kritis dan berkas whitelist
+			if ( Settings::is_critical_exempt( $file ) || in_array( $file, $user_whitelist, true ) ) {
+				continue;
+			}
+
+			// Req 1: Jika berkas adalah bagian dari core WordPress resmi di root dan hash cocok
+			$core_chk = self::get_core_checksums();
+			if ( is_array( $core_chk ) && isset( $core_chk[ $file ] ) ) {
+				if ( class_exists( __NAMESPACE__ . '\\ScanBatchRunner' ) && ScanBatchRunner::verify_file_hash( $file_path, $core_chk[ $file ] ) ) {
+					continue;
+				}
+			}
+
 			// Pengecekan: Berkas Asing di root (bukan bagian dari whitelist/baseline)
 			if ( ! in_array( $file, $known_files, true ) ) {
 				$created_time = esc_html__( 'Tidak diketahui', 'wp-root-guard' );
@@ -1000,12 +1013,6 @@ class Scanner {
 				'message' => esc_html__( 'Restore ditolak: checksum berkas remote tidak cocok dengan checksum resmi WordPress.', 'wp-root-guard' ),
 			);
 		}
-		if ( ! class_exists( __NAMESPACE__ . '\\QuarantineManager' ) || ! QuarantineManager::is_available_for_automatic_containment() ) {
-			return array(
-				'success' => false,
-				'message' => esc_html__( 'Restore otomatis ditolak karena vault karantina aman tidak tersedia untuk recovery kegagalan verifikasi.', 'wp-root-guard' ),
-			);
-		}
 
 		// Tulis temporary file lalu atomic rename agar file lama tetap utuh jika proses terputus.
 		$existing_mode = file_exists( $local_path ) ? (int) @fileperms( $local_path ) & 0777 : 0644;
@@ -1167,7 +1174,7 @@ class Scanner {
 		}
 
 		$ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
-		if ( ! in_array( $ext, array( 'php', 'htaccess', 'html', 'txt' ), true ) ) {
+		if ( ! in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc', 'htaccess', 'html', 'txt' ), true ) ) {
 			return false;
 		}
 
@@ -1390,6 +1397,11 @@ class Scanner {
 	public static function quarantine_file( $filename ) {
 		$filename = sanitize_text_field( $filename );
 
+		// Strict guard: NEVER allow critical system configuration files to be quarantined! (Req 2)
+		if ( class_exists( __NAMESPACE__ . '\\Settings' ) && ( Settings::is_critical_exempt( $filename ) || Settings::is_critical_exempt( basename( $filename ) ) ) ) {
+			return false;
+		}
+
 		// Validasi path traversal (cek .., slash, whitelist regex, dan realpath)
 		if ( empty( $filename ) || false !== strpos( $filename, '..' ) || false !== strpos( $filename, '/' ) || false !== strpos( $filename, '\\' ) ) {
 			return false;
@@ -1439,6 +1451,11 @@ class Scanner {
 	public static function quarantine_core_file( $rel_path ) {
 		$rel_path = sanitize_text_field( $rel_path );
 		$rel_path = str_replace( '\\', '/', $rel_path );
+
+		// Strict guard: NEVER allow critical system configuration files to be quarantined! (Req 2)
+		if ( class_exists( __NAMESPACE__ . '\\Settings' ) && ( Settings::is_critical_exempt( $rel_path ) || Settings::is_critical_exempt( basename( $rel_path ) ) ) ) {
+			return false;
+		}
 
 		// Validasi path traversal (cek .., slash tidak valid, whitelist regex, dan realpath)
 		if ( empty( $rel_path ) || false !== strpos( $rel_path, '..' ) || 0 === strpos( $rel_path, '/' ) || false !== strpos( $rel_path, '//' ) ) {
@@ -1783,6 +1800,29 @@ class Scanner {
 			return;
 		}
 
+		if ( empty( $threats ) ) {
+			delete_option( 'wp_root_guard_notified_threats' );
+			return;
+		}
+
+		// Filter out whitelisted and critical exempt files (Req 2 & 3: no alerts for whitelist or critical exempt)
+		$user_whitelist   = Settings::get_user_whitelist();
+		$filtered_threats = array();
+		foreach ( $threats as $threat ) {
+			if ( ! is_array( $threat ) ) {
+				continue;
+			}
+			$t_name = isset( $threat['name'] ) ? str_replace( '\\', '/', (string) $threat['name'] ) : '';
+			$t_base = basename( $t_name );
+			if ( Settings::is_critical_exempt( $t_name ) || Settings::is_critical_exempt( $t_base ) ) {
+				continue;
+			}
+			if ( in_array( $t_name, $user_whitelist, true ) || in_array( $t_base, $user_whitelist, true ) ) {
+				continue;
+			}
+			$filtered_threats[] = $threat;
+		}
+		$threats = $filtered_threats;
 		if ( empty( $threats ) ) {
 			delete_option( 'wp_root_guard_notified_threats' );
 			return;

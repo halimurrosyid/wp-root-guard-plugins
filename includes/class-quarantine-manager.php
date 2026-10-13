@@ -33,6 +33,15 @@ class QuarantineManager {
 	 * @return array|WP_Error
 	 */
 	public static function quarantine( $original_path, $original_name, $type = 'file' ) {
+		// Strict guard: NEVER allow critical system configuration files to be quarantined! (Req 2)
+		if ( class_exists( __NAMESPACE__ . '\\Settings' ) ) {
+			$base      = basename( str_replace( '\\', '/', (string) $original_name ) );
+			$path_base = basename( str_replace( '\\', '/', (string) $original_path ) );
+			if ( Settings::is_critical_exempt( $original_name ) || Settings::is_critical_exempt( $base ) || Settings::is_critical_exempt( $path_base ) ) {
+				return new \WP_Error( 'quarantine_critical_exempt', __( 'Berkas konfigurasi sistem kritis (.htaccess / wp-config.php) tidak boleh dikarantina.', 'wp-root-guard' ) );
+			}
+		}
+
 		$storage = QuarantineStorage::resolve_directory();
 		if ( 'ready' !== $storage['status'] || ! self::is_storage_permitted( $storage ) ) {
 			return new \WP_Error( 'quarantine_storage_unverified', __( 'Vault karantina tidak aman atau belum diverifikasi.', 'wp-root-guard' ) );

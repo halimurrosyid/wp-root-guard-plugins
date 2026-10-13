@@ -139,12 +139,102 @@ class ScanBatchRunner {
 	}
 
 	private static function analyze( $scope, $path, $absolute, $item ) {
-		$settings = Settings::get_settings(); $whitelist = Settings::get_user_whitelist();
-		if ( 'root_folders' === $scope ) { $known = array_merge( Settings::get_default_whitelist(), Baseline::get_baseline_folders(), $whitelist ); return in_array( $path, $known, true ) ? false : self::finding( 'folder', $path, $absolute, 'Unknown Folder', '-' ); }
-		if ( 'root_files' === $scope ) { $baseline = Baseline::get_baseline_files(); $known = array_merge( Settings::get_default_file_whitelist(), array_keys( $baseline ), $whitelist ); if ( ! in_array( $path, $known, true ) ) return self::finding( 'file', $path, $absolute, 'Unknown File', Scanner::scan_file_for_webshell( $absolute ) ); if ( isset( $baseline[$path] ) && ! hash_equals( $baseline[$path], (string) @md5_file( $absolute ) ) ) return self::finding( 'file', $path, $absolute, 'Modified File', Scanner::scan_file_for_webshell( $absolute ) ); return false; }
-		if ( 'core_checksums' === $scope ) { $actual = file_exists( $absolute ) ? @md5_file( $absolute ) : false; return false === $actual || ! hash_equals( strtolower( $item['expected_hash'] ), strtolower( (string) $actual ) ) ? self::finding( 'core_file', $path, $absolute, false === $actual ? 'Missing Core File' : 'Modified Core File', Scanner::scan_file_for_webshell( $absolute ) ) : false; }
-		if ( 'core_injected_files' === $scope ) { $checksums = self::checksums(); return ! isset( $checksums[$path] ) && ! in_array( $path, $whitelist, true ) ? self::finding( 'core_file', $path, $absolute, 'Suspicious Core Injection', Scanner::scan_file_for_webshell( $absolute ) ) : false; }
-		if ( 'uploads_php' === $scope ) { $ext = strtolower( pathinfo( $path, PATHINFO_EXTENSION ) ); return in_array( $ext, array( 'php','phtml','php3','php4','php5','php7','phps','phar','inc' ), true ) && ! in_array( $path, $whitelist, true ) ? self::finding( 'uploads_php', $path, $absolute, 'PHP File in Uploads', Scanner::scan_file_for_webshell( $absolute ) ) : false; }
+		$settings  = Settings::get_settings();
+		$whitelist = Settings::get_user_whitelist();
+		$path_norm = str_replace( '\\', '/', ltrim( (string) $path, '/\\' ) );
+		$basename  = basename( $path_norm );
+
+		// 1. Whitelist & Critical File Protection (Req 2 & 3: Never alert or quarantine exempt/whitelisted files)
+		$is_whitelisted = in_array( $path_norm, $whitelist, true ) || in_array( $basename, $whitelist, true );
+		$is_exempt      = Settings::is_critical_exempt( $path_norm ) || Settings::is_critical_exempt( $basename );
+		if ( $is_whitelisted || $is_exempt ) {
+			return false;
+		}
+
+		// 2. ROOT FOLDERS
+		if ( 'root_folders' === $scope ) {
+			$known = array_merge( Settings::get_default_whitelist(), Baseline::get_baseline_folders(), $whitelist );
+			return in_array( $path_norm, $known, true ) ? false : self::finding( 'folder', $path_norm, $absolute, 'Unknown Folder', '-' );
+		}
+
+		// 3. ROOT FILES (Req 1: Accommodate latest WP versions & official core files)
+		if ( 'root_files' === $scope ) {
+			$checksums = self::checksums();
+
+			// If file exists in official WP checksums (current version), verify against official hash
+			if ( isset( $checksums[ $path_norm ] ) ) {
+				if ( self::verify_file_hash( $absolute, $checksums[ $path_norm ] ) ) {
+					return false; // Valid official WordPress core file from current version!
+				}
+				return self::finding( 'core_file', $path_norm, $absolute, 'Modified Core File', Scanner::scan_file_for_webshell( $absolute ) );
+			}
+
+			// If not in core checksums, check default file whitelist
+			if ( in_array( $path_norm, Settings::get_default_file_whitelist(), true ) || in_array( $basename, Settings::get_default_file_whitelist(), true ) ) {
+				return false;
+			}
+
+			// Check against Baseline
+			$baseline = Baseline::get_baseline_files();
+			if ( isset( $baseline[ $path_norm ] ) ) {
+				if ( self::verify_file_hash( $absolute, $baseline[ $path_norm ] ) ) {
+					return false;
+				}
+				return self::finding( 'file', $path_norm, $absolute, 'Modified File', Scanner::scan_file_for_webshell( $absolute ) );
+			}
+
+			return self::finding( 'file', $path_norm, $absolute, 'Unknown File', Scanner::scan_file_for_webshell( $absolute ) );
+		}
+
+		// 4. CORE CHECKSUMS (wp-admin, wp-includes, and root core files)
+		if ( 'core_checksums' === $scope ) {
+			if ( ! file_exists( $absolute ) ) {
+				return self::finding( 'core_file', $path_norm, $absolute, 'Missing Core File', '-' );
+			}
+			return ! self::verify_file_hash( $absolute, $item['expected_hash'] ) ? self::finding( 'core_file', $path_norm, $absolute, 'Modified Core File', Scanner::scan_file_for_webshell( $absolute ) ) : false;
+		}
+
+		// 5. CORE INJECTED FILES (Intruder files in wp-admin / wp-includes)
+		if ( 'core_injected_files' === $scope ) {
+			$checksums = self::checksums();
+			return ! isset( $checksums[ $path_norm ] ) ? self::finding( 'core_file', $path_norm, $absolute, 'Suspicious Core Injection', Scanner::scan_file_for_webshell( $absolute ) ) : false;
+		}
+
+		// 6. UPLOADS PHP (PHP files in wp-content/uploads)
+		if ( 'uploads_php' === $scope ) {
+			$ext = strtolower( pathinfo( $path_norm, PATHINFO_EXTENSION ) );
+			return in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ? self::finding( 'uploads_php', $path_norm, $absolute, 'PHP File in Uploads', Scanner::scan_file_for_webshell( $absolute ) ) : false;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Verify file MD5 hash with CRLF normalization fallback to prevent Windows/OS line-ending false positives.
+	 *
+	 * @param string $absolute Absolute path to file.
+	 * @param string $expected_hash Expected MD5 hash.
+	 * @return bool True if hash matches.
+	 */
+	public static function verify_file_hash( $absolute, $expected_hash ) {
+		if ( ! file_exists( $absolute ) || is_dir( $absolute ) ) {
+			return false;
+		}
+		$actual = @md5_file( $absolute );
+		if ( false !== $actual && hash_equals( strtolower( (string) $expected_hash ), strtolower( (string) $actual ) ) ) {
+			return true;
+		}
+		// CRLF normalization fallback for files up to 5 MB
+		$size = (int) @filesize( $absolute );
+		if ( $size > 0 && $size <= 5242880 ) {
+			$content = @file_get_contents( $absolute );
+			if ( false !== $content && false !== strpos( $content, "\r" ) ) {
+				$normalized = md5( str_replace( "\r\n", "\n", $content ) );
+				if ( hash_equals( strtolower( (string) $expected_hash ), strtolower( (string) $normalized ) ) ) {
+					return true;
+				}
+			}
+		}
 		return false;
 	}
 
