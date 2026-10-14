@@ -191,7 +191,7 @@ class ScanBatchRunner {
 		$basename  = basename( $path_norm );
 
 		// 1. Whitelist & Critical File Protection (Req 2 & 3: Never alert or quarantine exempt/whitelisted files)
-		$is_whitelisted = in_array( $path_norm, $whitelist, true ) || in_array( $basename, $whitelist, true );
+		$is_whitelisted = in_array( $path_norm, $whitelist, true ) || in_array( $basename, $whitelist, true ) || ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_path_whitelisted( $path_norm ) );
 		$is_exempt      = Settings::is_critical_exempt( $path_norm ) || Settings::is_critical_exempt( $basename );
 		if ( $is_whitelisted || $is_exempt ) {
 			return false;
@@ -252,7 +252,18 @@ class ScanBatchRunner {
 		// 6. UPLOADS PHP (PHP files in wp-content/uploads)
 		if ( 'uploads_php' === $scope ) {
 			$ext = strtolower( pathinfo( $path_norm, PATHINFO_EXTENSION ) );
-			return in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ? self::finding( 'uploads_php', $path_norm, $absolute, 'PHP File in Uploads', Scanner::scan_file_for_webshell( $absolute ) ) : false;
+			if ( ! in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ) {
+				return false;
+			}
+			// Lewati jika berkas atau foldernya masuk whitelist
+			if ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_path_whitelisted( $path_norm ) ) {
+				return false;
+			}
+			// Lewati jika berkas adalah berkas proteksi legal (index.php kosong / "Silence is golden")
+			if ( class_exists( __NAMESPACE__ . '\\Scanner' ) && Scanner::is_innocent_uploads_file( $absolute ) ) {
+				return false;
+			}
+			return self::finding( 'uploads_php', $path_norm, $absolute, 'PHP File in Uploads', Scanner::scan_file_for_webshell( $absolute ) );
 		}
 
 		return false;
@@ -294,7 +305,21 @@ class ScanBatchRunner {
 	private static function skip_internal_path( $scope, $path ) { if ( 'uploads_php' !== $scope ) { return false; } $path = str_replace( '\\', '/', $path ); return 0 === strpos( $path, 'wp-content/uploads/wp-root-guard/' ) || 0 === strpos( $path, 'wp-content/uploads/wp-root-guard-quarantine/' ); }
 
 	private static function seed_remediation( $run ) { foreach ( self::findings( $run['run_id'] ) as $finding ) { self::enqueue_item( $run, 'remediate', $finding['name'], 'remediate', '', array( 'finding' => $finding ) ); } }
-	private static function remediate_item( $item, $token, $metadata ) { $finding = $metadata['finding'] ?? array(); $result = false; $settings = Settings::get_settings(); if ( ! empty( $settings['enable_auto_quarantine'] ) || ( 'uploads_php' === ( $finding['type'] ?? '' ) && ! empty( $settings['enable_uploads_auto_quarantine'] ) ) ) { $name = $finding['name'] ?? ''; $result = 'folder' === ( $finding['type'] ?? '' ) ? Scanner::quarantine_folder( $name ) : ( false !== strpos( $name, '/' ) ? Scanner::quarantine_core_file( $name ) : Scanner::quarantine_file( $name ) ); } self::finish_item( $item, $token, false !== $result ? 'done' : 'skipped', array( 'remediated' => false !== $result ) ); }
+	private static function remediate_item( $item, $token, $metadata ) {
+		$finding = $metadata['finding'] ?? array();
+		$result = false;
+		$settings = Settings::get_settings();
+		if ( ! empty( $settings['enable_auto_quarantine'] ) || ( 'uploads_php' === ( $finding['type'] ?? '' ) && ! empty( $settings['enable_uploads_auto_quarantine'] ) ) ) {
+			// Cegah false positive: Jangan pernah mengarantina otomatis berkas di uploads kecuali jika terbukti memiliki indikator malware/webshell
+			if ( 'uploads_php' === ( $finding['type'] ?? '' ) && ( empty( $finding['malware_indicator'] ) || '-' === $finding['malware_indicator'] ) ) {
+				self::finish_item( $item, $token, 'skipped', array( 'remediated' => false, 'reason' => 'manual_review_required' ) );
+				return;
+			}
+			$name = $finding['name'] ?? '';
+			$result = 'folder' === ( $finding['type'] ?? '' ) ? Scanner::quarantine_folder( $name ) : ( false !== strpos( $name, '/' ) ? Scanner::quarantine_core_file( $name ) : Scanner::quarantine_file( $name ) );
+		}
+		self::finish_item( $item, $token, false !== $result ? 'done' : 'skipped', array( 'remediated' => false !== $result ) );
+	}
 
 	private static function advance_scope( &$run ) { $index = array_search( $run['scope'], self::SCOPES, true ); $run['scope_index'] = false === $index ? count( self::SCOPES ) - 1 : $index + 1; $run['scope'] = self::SCOPES[ $run['scope_index'] ] ?? 'finalize'; $run['cursor'] = array( 'seeded' => false, 'offset' => 0 ); }
 	private static function persist_running( $run ) { $run['status'] = 'running'; $run['next_retry_at'] = 0; $run['batch_number']++; $run['updated_at'] = time(); $run['total'] = self::total_items( $run['run_id'] ); $run['findings_summary'] = array( 'threat_count' => count( self::findings( $run['run_id'] ) ) ); self::require_write( ScanStore::save_run( $run ), 'checkpoint_write_failed' ); update_option( self::RUN_OPTION, $run, false ); self::mark_dashboard_pending( $run ); return self::result( $run, ScanResult::EXECUTION_RUNNING ); }

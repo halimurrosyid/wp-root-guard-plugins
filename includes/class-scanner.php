@@ -610,7 +610,7 @@ class Scanner {
 				$malware_label     = $malware_indicator ? sprintf( /* translators: %s: nama signature */ esc_html__( 'Sangat Berbahaya (%s)', 'wp-root-guard' ), $malware_indicator ) : esc_html__( 'Berkas PHP di Folder Uploads', 'wp-root-guard' );
 
 					$quarantined = false;
-					if ( ( ! empty( $settings['enable_uploads_auto_quarantine'] ) || ! empty( $settings['enable_auto_quarantine'] ) ) && $uploads_quarantine ) {
+					if ( ( ! empty( $settings['enable_uploads_auto_quarantine'] ) || ! empty( $settings['enable_auto_quarantine'] ) ) && $uploads_quarantine && ! empty( $malware_indicator ) ) {
 						$quarantine_name = self::quarantine_core_file( $rel_path );
 						if ( false !== $quarantine_name ) {
 							$status_text = __( 'Quarantined Automatically', 'wp-root-guard' );
@@ -618,7 +618,7 @@ class Scanner {
 							$quarantined = true;
 						} else {
 							Logger::log(
-								esc_html__( 'Gagal mengarantina berkas PHP di folder uploads', 'wp-root-guard' ),
+								esc_html__( 'Gagal mengarantina berkas PHP berbahaya di folder uploads', 'wp-root-guard' ),
 								$rel_path,
 								esc_html__( 'Error', 'wp-root-guard' )
 							);
@@ -1178,6 +1178,10 @@ class Scanner {
 			$boundary . 'wso_version'                    => 'WSO Webshell',
 			$boundary . 'marvins'                        => 'Marvins Webshell',
 			$boundary . 'alfa_data'                      => 'ALFA Webshell',
+			$boundary . 'hex2bin\('                      => 'hex2bin() Obfuscation',
+			$boundary . 'move_uploaded_file\('           => 'Backdoor File Uploader',
+			'file_put_contents\s*\([^,]+,\s*(?:base64_decode|file_get_contents|curl_exec)' => 'Remote File Dropper',
+			'(?:slot_gacor|judi_online|pragmatic_play|maxwin|daftar_slot|bandar_slot)' => 'Slot Injection Keyword',
 		);
 	}
 
@@ -2098,6 +2102,98 @@ class Scanner {
 	}
 
 	/**
+	 * Memeriksa apakah berkas di folder uploads merupakan berkas proteksi legal (innocent)
+	 * yang sengaja dibuat oleh WordPress core atau plugin resmi (seperti Elementor, WooCommerce, WPForms)
+	 * untuk mencegah directory listing (misalnya: index.php kosong atau "Silence is golden").
+	 *
+	 * Berkas ini DIJAMIN BUKAN ANCAMAN jika:
+	 * 1. Berkas berukuran 0 byte (empty stub).
+	 * 2. Atau isinya hanya berupa komentar PHP tanpa eksekusi kode (misal: "Silence is golden").
+	 * 3. Atau hanya berisi proteksi standar WordPress (exit; die; defined('ABSPATH') || exit; 403/404 header).
+	 * 4. DAN sama sekali tidak memiliki signature webshell/malware.
+	 *
+	 * @param string $file_path Path absolut berkas.
+	 * @return bool True jika berkas aman/innocent, false jika mencurigakan/harus dipindai.
+	 */
+	public static function is_innocent_uploads_file( $file_path ) {
+		if ( ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+			return true;
+		}
+
+		// Jika file memiliki ukuran lebih dari 8 KB, berkas proteksi index.php tidak mungkin sebesar ini
+		$size = @filesize( $file_path );
+		if ( false !== $size && 0 === $size ) {
+			return true;
+		}
+		if ( false !== $size && $size > 8192 ) {
+			return false;
+		}
+
+		// Pastikan TIDAK memiliki signature webshell / malware sama sekali
+		$malware = self::scan_file_for_webshell( $file_path );
+		if ( false !== $malware ) {
+			return false;
+		}
+
+		$content = @file_get_contents( $file_path );
+		if ( false === $content || '' === trim( $content ) ) {
+			return true;
+		}
+
+		// Hapus tag pembuka dan penutup PHP
+		$clean = preg_replace( '/<\?(?:php|=)?/i', '', $content );
+		$clean = preg_replace( '/\?>/', '', $clean );
+
+		// Hapus seluruh komentar PHP: multi-line /* ... */, single-line // ..., dan shell style # ...
+		$clean = preg_replace( '/\/\*.*?\*\//s', '', $clean );
+		$clean = preg_replace( '/\/\/.*$/m', '', $clean );
+		$clean = preg_replace( '/#.*$/m', '', $clean );
+
+		// Hapus whitespace
+		$clean = trim( $clean );
+
+		// Jika setelah semua komentar dan tag dibersihkan hasilnya kosong, berkas murni berkas komentar proteksi (cth: "Silence is golden")
+		if ( '' === $clean ) {
+			return true;
+		}
+
+		// Normalisasi string untuk pencocokan kode proteksi direktori standar
+		$normalized = strtolower( preg_replace( '/\s+/', '', $clean ) );
+
+		$innocent_exact_patterns = array(
+			'exit;',
+			'exit();',
+			'die;',
+			'die();',
+			'return;',
+			'defined(\'abspath\')||exit;',
+			'defined("abspath")||exit;',
+			'defined(\'abspath\')orhit;',
+			'defined("abspath")orhit;',
+			'header("http/1.0404notfound");exit;',
+			'header(\'http/1.0404notfound\');exit;',
+			'header("http/1.0403forbidden");exit;',
+			'header(\'http/1.0403forbidden\');exit;',
+			'header("status:403forbidden");die();',
+			'header(\'status:403forbidden\');die();',
+			'header("status:404notfound");die();',
+			'header(\'status:404notfound\');die();',
+		);
+
+		if ( in_array( $normalized, $innocent_exact_patterns, true ) ) {
+			return true;
+		}
+
+		// Cek apakah kode hanya gabungan header status 403/404 dan exit/die
+		if ( preg_match( '/^(?:header\s*\(\s*[\'"][^\'"]+[\'"]\s*\)\s*;)?\s*(?:exit|die|return)(?:\s*\(\s*\))?\s*;?$/i', $clean ) ) {
+			return true;
+		}
+
+		// Jika berisi kode aktif lain, jangan anggap innocent
+		return false;
+	}
+
+	/**
 	 * Memindai direktori wp-content/uploads/ secara rekursif untuk mencari berkas PHP mencurigakan.
 	 *
 	 * @return array Daftar berkas PHP yang ditemukan di folder uploads.
@@ -2137,7 +2233,12 @@ class Scanner {
 					if ( in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' ), true ) ) {
 						$rel_path = str_replace( str_replace( '\\', '/', ABSPATH ), '', $abs_path );
 
-						if ( in_array( $rel_path, $user_whitelist, true ) || in_array( $abs_path, $user_whitelist, true ) ) {
+						if ( in_array( $rel_path, $user_whitelist, true ) || in_array( $abs_path, $user_whitelist, true ) || ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_path_whitelisted( $rel_path ) ) ) {
+							continue;
+						}
+
+						// Lewati jika berkas adalah berkas proteksi legal (index.php kosong / "Silence is golden")
+						if ( self::is_innocent_uploads_file( $abs_path ) ) {
 							continue;
 						}
 

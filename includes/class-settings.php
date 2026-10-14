@@ -186,6 +186,39 @@ class Settings {
 	}
 
 	/**
+	 * Memeriksa apakah path (berkas atau folder) terdaftar di whitelist kustom,
+	 * baik secara pencocokan persis, nama dasar (basename), maupun kecocokan folder induk (prefix).
+	 *
+	 * @param string $path Path relatif atau absolut.
+	 * @return bool True jika di-whitelist, false jika tidak.
+	 */
+	public static function is_path_whitelisted( $path ) {
+		$whitelist = self::get_user_whitelist();
+		if ( empty( $whitelist ) || ! is_array( $whitelist ) ) {
+			return false;
+		}
+
+		$norm = trim( str_replace( '\\', '/', (string) $path ), '/' );
+		$base = basename( $norm );
+
+		foreach ( $whitelist as $w ) {
+			$w_norm = trim( str_replace( '\\', '/', (string) $w ), '/' );
+			if ( empty( $w_norm ) ) {
+				continue;
+			}
+			if ( $norm === $w_norm || $base === $w_norm ) {
+				return true;
+			}
+			// Prefix match: jika folder di-whitelist, semua berkas di dalam subdirektorinya otomatis di-whitelist
+			if ( 0 === strpos( $norm, $w_norm . '/' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Mendapatkan whitelist berkas bawaan di root WordPress.
 	 *
 	 * @return array Daftar nama berkas standar.
