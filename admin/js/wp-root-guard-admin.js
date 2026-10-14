@@ -73,7 +73,7 @@
 			var shieldIcon = document.getElementById('rg-shield-icon');
 
 			function updateStageUI(stageNum) {
-				for (var s = 1; s <= 5; s++) {
+				for (var s = 1; s <= 6; s++) {
 					var stageEl = document.getElementById('rg-stage-' + s);
 					if (!stageEl) continue;
 					if (s < stageNum) {
@@ -105,6 +105,8 @@
 					badge = '🛡️ [Core Checksum]';
 				} else if (scope === 'uploads_php') {
 					badge = '🚨 [Uploads / Malware]';
+				} else if (scope === 'themes_plugins') {
+					badge = '🎨 [Tema & Plugin]';
 				} else if (scope === 'database_integrity') {
 					badge = '🗄️ [Database Guard]';
 				}
@@ -167,15 +169,16 @@
 							var executionState = res.execution_state || '';
 							var isCompleted = (executionState === 'completed');
 
-							// Map scope to 5 stages
+							// Map scope to 6 stages
 							var scope = progress.scope || 'root_folders';
 							var stageNum = 1;
 							if (scope === 'root_folders') stageNum = 1;
 							else if (scope === 'root_files') stageNum = 2;
 							else if (scope === 'core_checksums' || scope === 'core_injected_files') stageNum = 3;
 							else if (scope === 'uploads_php') stageNum = 4;
-							else if (scope === 'database_integrity' || scope === 'remediate') stageNum = 5;
-							else if (isCompleted) stageNum = 5;
+							else if (scope === 'themes_plugins') stageNum = 5;
+							else if (scope === 'database_integrity' || scope === 'remediate') stageNum = 6;
+							else if (isCompleted) stageNum = 6;
 
 							updateStageUI(stageNum);
 
@@ -228,7 +231,7 @@
 
 							// Completed celebration!
 							isScanningRunning = false;
-							for (var s = 1; s <= 5; s++) {
+							for (var s = 1; s <= 6; s++) {
 								var stageEl = document.getElementById('rg-stage-' + s);
 								if (stageEl) stageEl.className = 'rg-stage-pill completed';
 							}

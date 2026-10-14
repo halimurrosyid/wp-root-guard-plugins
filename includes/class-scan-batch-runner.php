@@ -14,7 +14,7 @@ class ScanBatchRunner {
 	const MAX_ITEMS = 250;
 	const MAX_SECONDS = 5;
 	const RUN_OPTION = 'wp_root_guard_batch_run';
-	const SCOPES = array( 'root_folders', 'root_files', 'core_checksums', 'core_injected_files', 'uploads_php', 'database_integrity', 'remediate', 'finalize' );
+	const SCOPES = array( 'root_folders', 'root_files', 'core_checksums', 'core_injected_files', 'uploads_php', 'themes_plugins', 'database_integrity', 'remediate', 'finalize' );
 	private static $checksums = null;
 
 	/** Start or continue exactly one bounded batch. */
@@ -136,6 +136,10 @@ class ScanBatchRunner {
 			}
 		} elseif ( 'uploads_php' === $scope ) {
 			self::enqueue_item( $run, $scope, 'wp-content/uploads', 'directory', '', array( 'offset' => 0 ) );
+			$cursor['seeded'] = true;
+		} elseif ( 'themes_plugins' === $scope ) {
+			self::enqueue_item( $run, $scope, 'wp-content/themes', 'directory', '', array( 'offset' => 0 ) );
+			self::enqueue_item( $run, $scope, 'wp-content/plugins', 'directory', '', array( 'offset' => 0 ) );
 			$cursor['seeded'] = true;
 		} elseif ( 'database_integrity' === $scope ) {
 			self::seed_database_scope( $run );
@@ -266,6 +270,20 @@ class ScanBatchRunner {
 			return self::finding( 'uploads_php', $path_norm, $absolute, 'PHP File in Uploads', Scanner::scan_file_for_webshell( $absolute ) );
 		}
 
+		// 7. THEMES & PLUGINS DEEP SCAN (Stealth files, disguised images, webshells, and slot injections)
+		if ( 'themes_plugins' === $scope ) {
+			// Lewati jika berkas atau foldernya masuk whitelist
+			if ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_path_whitelisted( $path_norm ) ) {
+				return false;
+			}
+
+			$indicator = Scanner::scan_theme_plugin_file( $absolute );
+			if ( false !== $indicator ) {
+				return self::finding( 'themes_plugins', $path_norm, $absolute, 'Ancaman Tema / Plugin', $indicator );
+			}
+			return false;
+		}
+
 		return false;
 	}
 
@@ -302,13 +320,35 @@ class ScanBatchRunner {
 	private static function unchanged( $path, $item ) { return file_exists( $path ) && ! is_link( $path ) && ( ! empty( $item['mtime'] ) ? (int) @filemtime( $path ) === (int) $item['mtime'] : true ) && ( ! empty( $item['size'] ) ? (int) @filesize( $path ) === (int) $item['size'] : true ); }
 	private static function stat_meta( $path ) { return array( 'size' => max( 0, (int) @filesize( $path ) ), 'mtime' => max( 0, (int) @filemtime( $path ) ) ); }
 	private static function checksums() { if ( null === self::$checksums ) { self::$checksums = Scanner::get_core_checksums(); } return is_array( self::$checksums ) ? self::$checksums : array(); }
-	private static function skip_internal_path( $scope, $path ) { if ( 'uploads_php' !== $scope ) { return false; } $path = str_replace( '\\', '/', $path ); return 0 === strpos( $path, 'wp-content/uploads/wp-root-guard/' ) || 0 === strpos( $path, 'wp-content/uploads/wp-root-guard-quarantine/' ); }
+	private static function skip_internal_path( $scope, $path ) {
+		$path = str_replace( '\\', '/', $path );
+		if ( 'uploads_php' === $scope ) {
+			return 0 === strpos( $path, 'wp-content/uploads/wp-root-guard/' ) || 0 === strpos( $path, 'wp-content/uploads/wp-root-guard-quarantine/' );
+		}
+		if ( 'themes_plugins' === $scope ) {
+			if ( 0 === strpos( $path, 'wp-content/plugins/wp-root-guard/' ) || 'wp-content/plugins/wp-root-guard' === $path ) {
+				return true;
+			}
+			$basename = basename( $path );
+			if ( in_array( $basename, array( '.git', '.svn', '.hg', 'node_modules', '.idea', '.vscode' ), true ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
 
 	private static function seed_remediation( $run ) { foreach ( self::findings( $run['run_id'] ) as $finding ) { self::enqueue_item( $run, 'remediate', $finding['name'], 'remediate', '', array( 'finding' => $finding ) ); } }
 	private static function remediate_item( $item, $token, $metadata ) {
 		$finding = $metadata['finding'] ?? array();
 		$result = false;
 		$settings = Settings::get_settings();
+
+		// Lindungi database dan tema/plugin dari auto-quarantine/auto-delete yang merusak situs
+		if ( in_array( $finding['type'] ?? '', array( 'database_threat', 'db_table', 'db_post', 'db_option', 'themes_plugins' ), true ) ) {
+			self::finish_item( $item, $token, 'skipped', array( 'remediated' => false, 'reason' => 'manual_review_required' ) );
+			return;
+		}
+
 		if ( ! empty( $settings['enable_auto_quarantine'] ) || ( 'uploads_php' === ( $finding['type'] ?? '' ) && ! empty( $settings['enable_uploads_auto_quarantine'] ) ) ) {
 			// Cegah false positive: Jangan pernah mengarantina otomatis berkas di uploads kecuali jika terbukti memiliki indikator malware/webshell
 			if ( 'uploads_php' === ( $finding['type'] ?? '' ) && ( empty( $finding['malware_indicator'] ) || '-' === $finding['malware_indicator'] ) ) {
@@ -456,18 +496,32 @@ class ScanBatchRunner {
 			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 			if ( ! empty( $rows ) ) {
 				$first = $rows[0];
+				$post_id = (int) $first->ID;
+				$post_url = function_exists( 'get_permalink' ) ? get_permalink( $post_id ) : home_url( '/?p=' . $post_id );
+				if ( empty( $post_url ) ) {
+					$post_url = home_url( '/?p=' . $post_id );
+				}
+				$edit_url = function_exists( 'get_edit_post_link' ) ? get_edit_post_link( $post_id, 'raw' ) : admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+				if ( empty( $edit_url ) ) {
+					$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+				}
+
 				$total_found = count( $rows );
 				$titles = array();
 				foreach ( $rows as $r ) {
 					$titles[] = '#' . $r->ID . ' "' . wp_trim_words( $r->post_title, 4, '...' ) . '"';
 				}
-				return self::finding(
+				$finding = self::finding(
 					'database_threat',
 					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
 					'Database: ' . $wpdb->prefix . 'posts (Ditemukan ' . $total_found . ' post slot)',
 					'Injeksi Konten Slot Gacor',
 					'Ditemukan post mengandung kata kunci judi/slot gacor: ' . implode( ', ', $titles )
 				);
+				$finding['post_id']  = $post_id;
+				$finding['post_url'] = $post_url;
+				$finding['edit_url'] = $edit_url;
+				return $finding;
 			}
 			return false;
 		}
@@ -492,13 +546,27 @@ class ScanBatchRunner {
 			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 			if ( ! empty( $rows ) ) {
 				$first = $rows[0];
-				return self::finding(
+				$post_id = (int) $first->ID;
+				$post_url = function_exists( 'get_permalink' ) ? get_permalink( $post_id ) : home_url( '/?p=' . $post_id );
+				if ( empty( $post_url ) ) {
+					$post_url = home_url( '/?p=' . $post_id );
+				}
+				$edit_url = function_exists( 'get_edit_post_link' ) ? get_edit_post_link( $post_id, 'raw' ) : admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+				if ( empty( $edit_url ) ) {
+					$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+				}
+
+				$finding = self::finding(
 					'database_threat',
 					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
 					'Database: ' . $wpdb->prefix . 'posts -> ID ' . $first->ID,
 					'Injeksi Stealth Iframe / Redirect',
 					'Ditemukan elemen tersembunyi (hidden iframe / invisible spam div) dalam konten post'
 				);
+				$finding['post_id']  = $post_id;
+				$finding['post_url'] = $post_url;
+				$finding['edit_url'] = $edit_url;
+				return $finding;
 			}
 			return false;
 		}

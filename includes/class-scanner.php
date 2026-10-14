@@ -1227,6 +1227,143 @@ class Scanner {
 	}
 
 	/**
+	 * Memeriksa apakah berkas PHP (khususnya di themes & plugins) disusupi injeksi link slot gacor
+	 * atau redirect tersembunyi ke situs judi online.
+	 *
+	 * @param string $file_path Path absolut berkas.
+	 * @return string|bool Keterangan indikasi jika ditemukan, false jika bersih.
+	 */
+	public static function scan_file_for_slot_injection( $file_path ) {
+		if ( ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+			return false;
+		}
+
+		$size = @filesize( $file_path );
+		if ( false === $size || $size === 0 || $size > 1024 * 1024 ) {
+			return false;
+		}
+
+		$content = @file_get_contents( $file_path );
+		if ( empty( $content ) ) {
+			return false;
+		}
+
+		$slot_keywords = array(
+			'slot gacor', 'judi online', 'rtp slot', 'sbobet',
+			'pragmatic play', 'maxwin', 'situs slot', 'bandar togel',
+			'poker online', 'agen slot', 'slot88', 'slot deposit',
+			'link gacor', 'judi bola', 'bocoran slot', 'togel online',
+			'slot online', 'zeus olympus', 'bandar slot'
+		);
+
+		$matched_kw = array();
+		foreach ( $slot_keywords as $kw ) {
+			if ( false !== stripos( $content, $kw ) ) {
+				$matched_kw[] = $kw;
+			}
+		}
+
+		if ( ! empty( $matched_kw ) ) {
+			return sprintf(
+				/* translators: %s: kata kunci slot terdeteksi */
+				esc_html__( 'Injeksi Link Slot Gacor / Judi Online (Kata kunci: "%s")', 'wp-root-guard' ),
+				implode( ', ', array_slice( $matched_kw, 0, 3 ) )
+			);
+		}
+
+		// Periksa keberadaan hidden redirector (iframe atau div tersembunyi ber-URL asing)
+		if ( preg_match( '/<iframe[^>]+(?:display:\s*none|visibility:\s*hidden|left:\s*-\d+px)[^>]*src=[\'"]https?:\/\//i', $content ) ) {
+			return esc_html__( 'Injeksi Hidden Iframe Redirector', 'wp-root-guard' );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Memeriksa apakah suatu berkas di dalam wp-content/themes atau wp-content/plugins
+	 * terindikasi sebagai susupan berbahaya (webshell, backdoor, file tersembunyi, atau injeksi slot).
+	 *
+	 * @param string $file_path Path absolut berkas.
+	 * @return string|bool String indikasi jika berbahaya, false jika bersih/aman.
+	 */
+	public static function scan_theme_plugin_file( $file_path ) {
+		if ( ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+			return false;
+		}
+
+		$basename = basename( $file_path );
+		$ext      = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+
+		// 1. Deteksi Berkas Tersembunyi (Dot-Files PHP)
+		// Contoh: .shell.php, .config.php, .alfashell.php
+		$php_exts = array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' );
+		if ( 0 === strpos( $basename, '.' ) && in_array( $ext, $php_exts, true ) ) {
+			return esc_html__( 'Berkas PHP Tersembunyi (Stealth Dot-File)', 'wp-root-guard' );
+		}
+
+		// 2. Deteksi Berkas Gambar / Media Berkedok Script PHP (Polyglot / Disguised Backdoor)
+		$media_exts = array( 'jpg', 'jpeg', 'png', 'gif', 'ico', 'webp', 'bmp', 'svg' );
+		if ( in_array( $ext, $media_exts, true ) ) {
+			$size = @filesize( $file_path );
+			if ( false !== $size && $size > 0 && $size <= 2 * 1024 * 1024 ) {
+				$content = @file_get_contents( $file_path );
+				if ( false !== $content ) {
+					if ( preg_match( '/<\?(?:php|=)/i', $content ) ) {
+						return esc_html__( 'Berkas Gambar Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
+					}
+				}
+			}
+			return false;
+		}
+
+		// Hanya periksa berkas dengan ekstensi script / template
+		if ( ! in_array( $ext, $php_exts, true ) && 'js' !== $ext && 'html' !== $ext ) {
+			return false;
+		}
+
+		$size = @filesize( $file_path );
+		if ( false === $size || 0 === $size || $size > 1024 * 1024 ) {
+			return false;
+		}
+
+		$content = @file_get_contents( $file_path );
+		if ( empty( $content ) ) {
+			return false;
+		}
+
+		// 3. Deteksi Injeksi Slot Gacor & Judi Online (Sangat marak pada themes/plugins)
+		$slot_check = self::scan_file_for_slot_injection( $file_path );
+		if ( false !== $slot_check ) {
+			return $slot_check;
+		}
+
+		// 4. Deteksi Tanda Tangan Webshell Spesifik & Arbitrary RCE Execution
+		$strict_threats = array(
+			'/c99shell/i'                           => 'C99 Webshell',
+			'/r57shell/i'                           => 'R57 Webshell',
+			'/b374k/i'                              => 'b374k Webshell',
+			'/wso_version/i'                        => 'WSO Webshell',
+			'/marvins/i'                            => 'Marvins Webshell',
+			'/alfa_data/i'                          => 'ALFA Webshell',
+			'/FilesMan/i'                           => 'FilesMan Backdoor',
+			'/indoxploit/i'                         => 'IndoXploit Webshell',
+			'/(?:eval|assert)\s*\(\s*(?:base64_decode|gzinflate|str_rot13|hex2bin)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)/i' => 'Obfuscated RCE Webshell ($_POST/$_GET)',
+			'/(?:eval|assert)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)\s*\[/i' => 'Direct RCE ($_POST/$_GET eval)',
+			'/(?:system|shell_exec|passthru|exec)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)\s*\[/i' => 'Arbitrary Command Execution ($_POST/$_GET)',
+			'/preg_replace\s*\(\s*[\'"]\/.*\/e[\'"]\s*,\s*\$_(?:POST|GET|REQUEST|COOKIE)/i' => 'Preg_replace /e Code Injection',
+			'/\$_(?:POST|GET|REQUEST)\s*\[\s*[\'"][^\'"]+[\'"]\s*\]\s*\(\s*\$_(?:POST|GET|REQUEST)/i' => 'Variable Function RCE Backdoor',
+		);
+
+		foreach ( $strict_threats as $pattern => $label ) {
+			if ( preg_match( $pattern, $content ) ) {
+				return $label;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Membaca isi berkas secara aman dan menganalisis setiap baris untuk tanda tangan bahaya.
 	 *
 	 * @param string $rel_path Path relatif berkas.
@@ -1901,12 +2038,28 @@ class Scanner {
 			$email_body .= sprintf( /* translators: %1$d: jumlah temuan, %2$s: URL situs */ esc_html__( 'WP Root Guard mendeteksi %1$d berkas/folder asing atau dimodifikasi baru pada root directory situs Anda (%2$s):', 'wp-root-guard' ), $count, $site_url ) . "\r\n\r\n";
 
 			foreach ( $new_threats as $threat ) {
-				$type_label   = ( 'folder' === $threat['type'] ) ? esc_html__( 'Folder Asing', 'wp-root-guard' ) : ( 'uploads_php' === $threat['type'] ? esc_html__( 'PHP di Folder Uploads', 'wp-root-guard' ) : esc_html__( 'Berkas/Integritas Core', 'wp-root-guard' ) );
+				$type_label = esc_html__( 'Berkas/Integritas Core', 'wp-root-guard' );
+				if ( 'folder' === $threat['type'] ) {
+					$type_label = esc_html__( 'Folder Asing', 'wp-root-guard' );
+				} elseif ( 'uploads_php' === $threat['type'] ) {
+					$type_label = esc_html__( 'PHP di Folder Uploads', 'wp-root-guard' );
+				} elseif ( 'themes_plugins' === $threat['type'] ) {
+					$type_label = esc_html__( 'Susupan di Tema / Plugin', 'wp-root-guard' );
+				} elseif ( in_array( $threat['type'], array( 'database_threat', 'db_table', 'db_post', 'db_option' ), true ) ) {
+					$type_label = esc_html__( 'Database / Injeksi Konten Slot', 'wp-root-guard' );
+				}
+
 				$status_label = ( __( 'Quarantined Automatically', 'wp-root-guard' ) === $threat['status'] ) ? esc_html__( 'Sudah Dikarantina Otomatis', 'wp-root-guard' ) : esc_html__( 'Belum Dikarantina', 'wp-root-guard' );
 				
 				$email_body .= "- " . sprintf( /* translators: %1$s: tipe, %2$s: nama */ esc_html__( '%1$s: %2$s', 'wp-root-guard' ), $type_label, $threat['name'] ) . "\r\n";
 				$email_body .= "  " . sprintf( /* translators: %s: path */ esc_html__( 'Path: %s', 'wp-root-guard' ), $threat['path'] ) . "\r\n";
 				$email_body .= "  " . sprintf( /* translators: %s: status */ esc_html__( 'Status: %s', 'wp-root-guard' ), $status_label ) . "\r\n";
+				if ( ! empty( $threat['post_url'] ) ) {
+					$email_body .= "  " . sprintf( /* translators: %s: URL */ esc_html__( 'URL Post: %s', 'wp-root-guard' ), $threat['post_url'] ) . "\r\n";
+				}
+				if ( ! empty( $threat['edit_url'] ) ) {
+					$email_body .= "  " . sprintf( /* translators: %s: URL */ esc_html__( 'Edit di WP Admin: %s', 'wp-root-guard' ), $threat['edit_url'] ) . "\r\n";
+				}
 				if ( '-' !== $threat['malware_indicator'] ) {
 					$email_body .= "  " . sprintf( /* translators: %s: indikasi */ esc_html__( 'Indikasi: %s', 'wp-root-guard' ), $threat['malware_indicator'] ) . "\r\n";
 				}
@@ -1937,7 +2090,17 @@ class Scanner {
 			$tg_msg .= "Ditemukan *{$count}* berkas/folder baru/dimodifikasi:\n\n";
 
 			foreach ( $new_threats as $threat ) {
-				$type_icon    = ( 'folder' === $threat['type'] ) ? "📂" : "📄";
+				$type_icon = '📄';
+				if ( 'folder' === $threat['type'] ) {
+					$type_icon = '📂';
+				} elseif ( 'uploads_php' === $threat['type'] ) {
+					$type_icon = '🚨';
+				} elseif ( 'themes_plugins' === $threat['type'] ) {
+					$type_icon = '🎨';
+				} elseif ( in_array( $threat['type'], array( 'database_threat', 'db_table', 'db_post', 'db_option' ), true ) ) {
+					$type_icon = '🗄️';
+				}
+
 				$status_label = ( __( 'Quarantined Automatically', 'wp-root-guard' ) === $threat['status'] ) ? "🔒 _Sudah Dikarantina_" : "⚠️ *Belum Dikarantina*";
 				
 				$safe_name = self::escape_telegram_markdown( $threat['name'] );
@@ -1946,6 +2109,14 @@ class Scanner {
 				$tg_msg .= "{$type_icon} *Nama*: `{$safe_name}`\n";
 				$tg_msg .= "📍 *Path*: `{$safe_path}`\n";
 				$tg_msg .= "🛡️ *Status*: {$status_label}\n";
+				if ( ! empty( $threat['post_url'] ) ) {
+					$safe_post_url = self::escape_telegram_markdown( $threat['post_url'] );
+					$tg_msg .= "🔗 *URL Post*: {$safe_post_url}\n";
+				}
+				if ( ! empty( $threat['edit_url'] ) ) {
+					$safe_edit_url = self::escape_telegram_markdown( $threat['edit_url'] );
+					$tg_msg .= "✏️ *Edit di WP Admin*: {$safe_edit_url}\n";
+				}
 				if ( '-' !== $threat['malware_indicator'] ) {
 					$safe_indicator = self::escape_telegram_markdown( $threat['malware_indicator'] );
 					$tg_msg .= "💀 *Indikasi*: `{$safe_indicator}`\n";
@@ -1987,6 +2158,8 @@ class Scanner {
 			if ( $hash ) {
 				$key .= ':' . $hash;
 			}
+		} elseif ( in_array( $type, array( 'database_threat', 'db_table', 'db_post', 'db_option' ), true ) && ! empty( $threat['malware_indicator'] ) ) {
+			$key .= ':' . md5( $threat['malware_indicator'] );
 		}
 
 		return $key;

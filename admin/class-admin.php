@@ -658,11 +658,18 @@ class Admin {
 			'stage' => 4,
 		);
 
-		// 5. Tambahkan pemeriksaan database & konten slot gacor
+		// 5. Tambahkan pemeriksaan tema & plugin aktif/terpasang
+		$queue[] = array(
+			'type'  => 'themes_plugins',
+			'name'  => 'wp-content/themes & wp-content/plugins (Pemeriksaan Susupan Backdoor & Injeksi Slot)',
+			'stage' => 5,
+		);
+
+		// 6. Tambahkan pemeriksaan database & konten slot gacor
 		$queue[] = array(
 			'type'  => 'database',
 			'name'  => 'wp_posts, wp_options & Tabel Database (Pemeriksaan Injeksi Slot Gacor)',
-			'stage' => 5,
+			'stage' => 6,
 		);
 
 		wp_send_json_success( array(
@@ -672,7 +679,8 @@ class Admin {
 				2 => esc_html__( 'Berkas Root & Whitelist', 'wp-root-guard' ),
 				3 => esc_html__( 'Integritas Core Checksums', 'wp-root-guard' ),
 				4 => esc_html__( 'Direktori Uploads & Webshell', 'wp-root-guard' ),
-				5 => esc_html__( 'Database & Slot Guard', 'wp-root-guard' ),
+				5 => esc_html__( 'Tema & Plugin (Malware / Slot)', 'wp-root-guard' ),
+				6 => esc_html__( 'Database & Slot Guard', 'wp-root-guard' ),
 			),
 		) );
 	}
@@ -1211,7 +1219,11 @@ class Admin {
 								</div>
 								<div class="rg-stage-pill" id="rg-stage-5">
 									<span class="rg-stage-dot"></span>
-									<span>5. <?php esc_html_e( 'Database & Slot Guard', 'wp-root-guard' ); ?></span>
+									<span>5. <?php esc_html_e( 'Tema & Plugin', 'wp-root-guard' ); ?></span>
+								</div>
+								<div class="rg-stage-pill" id="rg-stage-6">
+									<span class="rg-stage-dot"></span>
+									<span>6. <?php esc_html_e( 'Database & Slot Guard', 'wp-root-guard' ); ?></span>
 								</div>
 							</div>
 
@@ -1258,12 +1270,13 @@ class Admin {
 				</div>
 
 				<?php
-				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), core_file, uploads_php, dan database_threat
-				$active_folders  = array();
-				$active_files    = array();
-				$active_core     = array();
-				$active_uploads  = array();
-				$active_database = array();
+				// Pisahkan data ancaman berdasarkan tipe: folder, file (root), core_file, uploads_php, themes_plugins, dan database_threat
+				$active_folders        = array();
+				$active_files          = array();
+				$active_core           = array();
+				$active_uploads        = array();
+				$active_themes_plugins = array();
+				$active_database       = array();
 
 				foreach ( $unknown_folders as $item ) {
 					// Lewati folder atau berkas yang sudah berhasil dikarantina
@@ -1274,6 +1287,8 @@ class Admin {
 					$type = isset( $item['type'] ) ? $item['type'] : 'folder';
 					if ( 'uploads_php' === $type ) {
 						$active_uploads[] = $item;
+					} elseif ( 'themes_plugins' === $type ) {
+						$active_themes_plugins[] = $item;
 					} elseif ( 'core_file' === $type ) {
 						$active_core[] = $item;
 					} elseif ( 'file' === $type ) {
@@ -1284,7 +1299,7 @@ class Admin {
 						$active_folders[] = $item;
 					}
 				}
-				$has_active_threats = ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) || ! empty( $active_database ) );
+				$has_active_threats = ( ! empty( $active_folders ) || ! empty( $active_core ) || ! empty( $active_files ) || ! empty( $active_uploads ) || ! empty( $active_themes_plugins ) || ! empty( $active_database ) );
 				?>
 
 				<?php if ( $has_active_threats ) : ?>
@@ -1603,7 +1618,74 @@ class Admin {
 					</div>
 				</div>
 
-				<!-- TABEL 5: HASIL PEMINDAIAN DATABASE & KONTEN SLOT GACOR -->
+				<!-- TABEL 5: HASIL PEMINDAIAN TEMA & PLUGIN (wp-content/themes & wp-content/plugins) -->
+				<div class="rg-card rg-table-card">
+					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca; display: flex; align-items: center; justify-content: space-between;">
+						<h2 style="color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
+							🎨 <?php esc_html_e( 'Hasil Scan: Susupan di Tema & Plugin (wp-content/themes & plugins)', 'wp-root-guard' ); ?>
+							<?php if ( ! empty( $active_themes_plugins ) ) : ?>
+								<span class="rg-badge badge-danger"><?php echo count( $active_themes_plugins ); ?> <?php esc_html_e( 'Susupan Terdeteksi', 'wp-root-guard' ); ?></span>
+							<?php else : ?>
+								<span class="rg-badge badge-safe">100% Bersih</span>
+							<?php endif; ?>
+						</h2>
+					</div>
+					<div class="rg-card-body">
+						<?php if ( empty( $active_themes_plugins ) ) : ?>
+							<div class="rg-empty-message">
+								<p>✅ <?php esc_html_e( 'Tema dan plugin WordPress bersih. Tidak ada webshell, file tersembunyi, atau injeksi slot gacor.', 'wp-root-guard' ); ?></p>
+							</div>
+						<?php else : ?>
+							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
+								<thead>
+									<tr>
+										<th style="width: 38px; text-align: center;"><input type="checkbox" class="rg-select-all" onclick="toggleSelectAllTable(this)"></th>
+										<th><?php esc_html_e( 'Nama Berkas', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Full Path', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Indikasi Bahaya / Susupan', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
+										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
+										<th style="width: 250px;"><?php esc_html_e( 'Aksi', 'wp-root-guard' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ( $active_themes_plugins as $file ) : ?>
+										<tr>
+											<td style="text-align: center;"><input type="checkbox" name="bulk_items[]" value="<?php echo esc_attr( $file['name'] ); ?>" class="rg-item-checkbox rg-checkbox" onchange="updateSelectedCount()"></td>
+											<td><strong class="text-danger"><?php echo esc_html( $file['name'] ); ?></strong></td>
+											<td><code><?php echo esc_html( $file['path'] ); ?></code></td>
+											<td>
+												<span class="text-danger" style="font-size: 13px; font-weight: 600;">
+													⚠️ <?php echo esc_html( $file['malware_indicator'] ); ?>
+												</span>
+											</td>
+											<td><?php echo esc_html( $file['detection_time'] ); ?></td>
+											<td>
+												<span class="rg-badge badge-danger"><?php echo esc_html( $file['status'] ); ?></span>
+											</td>
+											<td>
+												<button type="button" class="button button-small button-secondary rg-inspect" data-path="<?php echo esc_attr( $file['name'] ); ?>" onclick="openCodeInspector('<?php echo esc_js( $file['name'] ); ?>')">
+													👁️ <?php esc_html_e( 'Lihat Isi', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-secondary" onclick="trustFolder('<?php echo esc_js( $file['name'] ); ?>')">
+													👍 <?php esc_html_e( 'Trust File', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Karantina berkas susupan tema/plugin ini?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('quarantine_file', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🔒 <?php esc_html_e( 'Karantina', 'wp-root-guard' ); ?>
+												</button>
+												<button type="button" class="button button-small button-link-delete" style="color: #dc2626; border-color: #fca5a5; text-decoration: none;" onclick="if(confirm('<?php echo esc_js( __( 'Apakah Anda yakin ingin menghapus berkas susupan ini secara PERMANEN dari server?', 'wp-root-guard' ) ); ?>')) { submitFolderAction('delete_file_directly', '<?php echo esc_js( $file['name'] ); ?>'); }">
+													🗑️ <?php esc_html_e( 'Hapus', 'wp-root-guard' ); ?>
+												</button>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						<?php endif; ?>
+					</div>
+				</div>
+
+				<!-- TABEL 6: HASIL PEMINDAIAN DATABASE & KONTEN SLOT GACOR -->
 				<div class="rg-card rg-table-card">
 					<div class="rg-card-header" style="background-color: #fef2f2; border-bottom: 1px solid #fecaca; display: flex; align-items: center; justify-content: space-between;">
 						<h2 style="color: #991b1b; margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -1636,7 +1718,7 @@ class Admin {
 										<th><?php esc_html_e( 'Indikasi Bahaya / Keterangan', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
-										<th style="width: 240px;"><?php esc_html_e( 'Panduan Tindakan / Aksi', 'wp-root-guard' ); ?></th>
+										<th style="width: 280px;"><?php esc_html_e( 'Panduan Tindakan / Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
 								</thead>
 								<tbody>
@@ -1654,12 +1736,31 @@ class Admin {
 												<span class="rg-badge badge-danger"><?php echo esc_html( $item['status'] ); ?></span>
 											</td>
 											<td>
-												<?php if ( preg_match( '/ID:\s*(\d+)/', $item['name'], $m ) ) : ?>
-													<a href="<?php echo esc_url( admin_url( 'post.php?post=' . absint( $m[1] ) . '&action=edit' ) ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none;">
-														🔍 <?php esc_html_e( 'Buka di WP Admin', 'wp-root-guard' ); ?>
+												<?php
+												$post_id = 0;
+												if ( ! empty( $item['post_id'] ) ) {
+													$post_id = absint( $item['post_id'] );
+												} elseif ( preg_match( '/ID:\s*(\d+)/', $item['name'], $m ) ) {
+													$post_id = absint( $m[1] );
+												}
+												$post_url = ! empty( $item['post_url'] ) ? $item['post_url'] : ( $post_id ? get_permalink( $post_id ) : '' );
+												$edit_url = ! empty( $item['edit_url'] ) ? $item['edit_url'] : ( $post_id ? get_edit_post_link( $post_id, 'raw' ) : '' );
+												if ( empty( $edit_url ) && $post_id ) {
+													$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+												}
+												?>
+												<?php if ( $post_url ) : ?>
+													<a href="<?php echo esc_url( $post_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
+														🔗 <?php esc_html_e( 'Lihat Post', 'wp-root-guard' ); ?>
 													</a>
-												<?php else : ?>
-													<span style="font-size: 12px; color: #64748b; font-style: italic;">
+												<?php endif; ?>
+												<?php if ( $edit_url ) : ?>
+													<a href="<?php echo esc_url( $edit_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
+														✏️ <?php esc_html_e( 'Edit di WP Admin', 'wp-root-guard' ); ?>
+													</a>
+												<?php endif; ?>
+												<?php if ( ! $post_url && ! $edit_url ) : ?>
+													<span style="font-size: 12px; color: #64748b; font-style: italic; margin-right: 6px;">
 														ℹ️ <?php esc_html_e( 'Periksa di phpMyAdmin', 'wp-root-guard' ); ?>
 													</span>
 												<?php endif; ?>
@@ -1692,12 +1793,12 @@ class Admin {
 									<?php esc_html_e( 'Semua Komponen Sistem Terlindungi Sepenuhnya', 'wp-root-guard' ); ?>
 								</h2>
 								<p class="rg-clean-desc">
-									<?php esc_html_e( 'Pemeriksaan menyeluruh tidak menemukan folder asing, berkas mencurigakan, modifikasi pada berkas resmi core, skrip webshell di folder uploads, maupun injeksi slot di database.', 'wp-root-guard' ); ?>
+									<?php esc_html_e( 'Pemeriksaan menyeluruh tidak menemukan folder asing, berkas mencurigakan, modifikasi pada berkas resmi core, skrip webshell di folder uploads, susupan malware di tema/plugin, maupun injeksi slot di database.', 'wp-root-guard' ); ?>
 								</p>
 							</div>
 						</div>
 
-						<!-- 5 Pilar Verifikasi Bersih -->
+						<!-- 6 Pilar Verifikasi Bersih -->
 						<div class="rg-clean-pillars-grid">
 							<div class="rg-clean-pillar-item">
 								<div class="rg-pillar-icon">📁</div>
@@ -1732,6 +1833,15 @@ class Admin {
 									<strong><?php esc_html_e( 'Direktori Uploads', 'wp-root-guard' ); ?></strong>
 									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Bebas Webshell', 'wp-root-guard' ); ?></span>
 									<small><?php esc_html_e( '0 eksekusi PHP mencurigakan', 'wp-root-guard' ); ?></small>
+								</div>
+							</div>
+
+							<div class="rg-clean-pillar-item">
+								<div class="rg-pillar-icon">🎨</div>
+								<div class="rg-pillar-info">
+									<strong><?php esc_html_e( 'Tema & Plugin WordPress', 'wp-root-guard' ); ?></strong>
+									<span class="rg-pillar-status text-safe">✅ <?php esc_html_e( 'Bebas Susupan Backdoor', 'wp-root-guard' ); ?></span>
+									<small><?php esc_html_e( '0 stealth dot-files & fake images', 'wp-root-guard' ); ?></small>
 								</div>
 							</div>
 
