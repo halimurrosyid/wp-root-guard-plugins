@@ -20,6 +20,15 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.0 (14 Oktober 2026)
+- **1-Click "Buang ke Kotak Sampah (Trash Post)"**: Aksi cepat dan aman untuk memindahkan post spam slot/judi online ke Kotak Sampah (`wp_trash_post()`) langsung dari dasbor Root Guard tanpa merusak basis data dan dapat dipulihkan sewaktu-waktu.
+- **Aksi Massal Buang ke Sampah (Bulk Trash)**: Tombol pembersihan massal seluruh daftar post terinfeksi dalam 1 kali klik.
+- **Penghitung Total Post Terinfeksi (Accurate COUNT)**: Menghitung jumlah riil seluruh post terinfeksi di database `wp_posts` dengan query `COUNT(*)` terindeks serta menampilkan badge peringatan `🚨 Total X Post Terdeteksi`.
+- **Paginasi & Akordeon Rincian Multi-Post**: Menampilkan hingga 15 post teratas dengan judul, ID, tautan langsung ke artikel (Lihat Post), dan tombol editor (Edit di WP Admin) dalam panel akordeon interaktif.
+- **Pemindai Mendalam Tema & Plugin (Themes & Plugins Guard)**: Memindai folder `wp-content/themes/` dan `wp-content/plugins/` dari berkas PHP tersembunyi (stealth dot-files seperti `.alfa_shell.php`), gambar palsu bermuatan PHP (fake image backdoor), injeksi link judi slot di tema, dan tanda tangan webshell terkenal (WSO, C99, Alfa, FilesMan).
+- **Proteksi Berkas Innocent Uploads & Subfolder Whitelist**: Mengeliminasi false positive pada folder uploads dengan mengenali berkas proteksi standar plugin (`index.php` kosong 0-byte, komentar "Silence is golden", proteksi HTTP 403, dan check ABSPATH). Mendukung pencocokan prefix folder pada whitelist kustom.
+- **Dark Cyber Radar Scanner 6-Stage UI**: Antarmuka radar pemindai diperbarui menjadi 6 tahapan pemeriksaan lengkap dengan live ticker badge `🎨 [Tema & Plugin]` dan `🗄️ [Database Guard]` secara dinamis.
+
 ### v3.3.0 (1 Oktober 2026)
 - P0 hardening: status security, coverage, dan execution kini dipisahkan; scope yang gagal tidak dapat menghasilkan status aman.
 - Global scan lease untuk jalur cron, traffic, AJAX, dan manual.

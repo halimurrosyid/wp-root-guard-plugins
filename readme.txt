@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.6.4
+Stable tag: 3.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,15 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
 
 == Changelog ==
+
+= 3.7.0 =
+* 1-Click Buang ke Kotak Sampah (Trash Post): Aksi cepat dan aman untuk memindahkan post terindikasi spam slot/judi online ke Kotak Sampah (Trash) WordPress secara langsung dari dasbor Root Guard dengan `wp_trash_post()`. Soft-delete yang aman, tidak merusak database, dan dapat dipulihkan sewaktu-waktu.
+* Aksi Massal Buang ke Sampah (Bulk Trash): Menyediakan tombol 1-klik untuk membuang seluruh daftar post terinfeksi yang ditemukan ke Kotak Sampah secara massal.
+* Penghitung Total Post Terinfeksi (Accurate COUNT): Menghitung jumlah riil seluruh post terinfeksi di database `wp_posts` dengan query `COUNT(*)` terindeks serta menampilkan badge peringatan `Total X Post Terdeteksi`.
+* Paginasi & Akordeon Rincian Multi-Post: Mengambil hingga 15 post teratas lengkap dengan judul, ID, tautan langsung ke artikel (Lihat Post), dan tombol editor (Edit di WP Admin). Dilengkapi panel akordeon interaktif untuk meninjau dan mengelola setiap post secara individual.
+* Pemindai Mendalam Tema & Plugin (Themes & Plugins Guard): Tahap 5 pemindaian baru yang memindai folder `wp-content/themes/` dan `wp-content/plugins/` dari berkas PHP tersembunyi (stealth dot-files seperti `.alfa_shell.php`), gambar palsu bermuatan PHP (fake image backdoor), injeksi link judi slot di tema, dan tanda tangan webshell terkenal (WSO, C99, Alfa, FilesMan).
+* Proteksi Berkas Innocent Uploads & Subfolder Whitelist: Mengeliminasi false positive pada folder uploads dengan mengenali berkas proteksi standar plugin (`index.php` kosong 0-byte, komentar "Silence is golden", proteksi HTTP 403, dan check ABSPATH). Mendukung pencocokan prefix folder pada whitelist kustom.
+* Dark Cyber Radar Scanner 6-Stage UI: Memperbarui radar scanner menjadi 6 tahapan pemeriksaan lengkap dengan live ticker badge `[Tema & Plugin]` dan `[Database Guard]` secara dinamis.
 
 = 3.6.4 =
 * Frekuensi Pemindaian Bawaan 1 Jam (Default Hourly Scan): Mengubah interval pemindaian latar belakang default menjadi "Setiap 1 Jam" (hourly) untuk keseimbangan optimal antara perlindungan real-time dan efisiensi resource server.
