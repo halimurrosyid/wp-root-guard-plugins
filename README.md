@@ -20,6 +20,9 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.3 (14 Oktober 2026)
+- **Perbaikan Kritis UI Dark Cyber Scanner**: Memperbaiki penutupan kurung kurawal CSS pada animasi `@keyframes rgSlideUp` yang sempat membuat styling panel radar pemindai (`.rg-dark-scanner-card`) tidak ter-render oleh browser. Tampilan radar dark cyber scanner kini kembali mulus, futuristik, dan terisi lengkap.
+
 ### v3.7.2 (14 Oktober 2026)
 - **Eliminasi False Positive Ikon Vektor SVG**: Memperbarui deteksi media SVG pada `is_malicious_media_payload()` agar mengenali standar resmi W3C untuk gambar raster yang disematkan (`data:image/png`, `data:image/jpeg`, `data:image/webp`). Ikon resmi dari plugin terkemuka (Tutor LMS, WPMU DEV Dashboard, Jetpack) tidak lagi keliru terdeteksi sebagai backdoor.
 - **Inspektur Kode Interaktif Berpenanda Cerdas (Smart Threat Highlighting)**: Penandaan baris bahaya otomatis dengan sorotan merah, penanda kata kunci spesifik inline (`<mark>`), navigasi cepat nomor baris bahaya (`[📍 Baris X]`), tombol Sebelumnya & Berikutnya, serta auto-scroll otomatis langsung ke lokasi bahaya pertama saat modal dibuka.
