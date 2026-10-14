@@ -1196,6 +1196,11 @@ class Scanner {
 			return false;
 		}
 
+		$norm_path = str_replace( '\\', '/', $file_path );
+		if ( false !== stripos( $norm_path, 'wp-root-guard' ) ) {
+			return false;
+		}
+
 		$ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
 		if ( ! in_array( $ext, array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc', 'htaccess', 'html', 'txt' ), true ) ) {
 			return false;
@@ -1235,6 +1240,11 @@ class Scanner {
 	 */
 	public static function scan_file_for_slot_injection( $file_path ) {
 		if ( ! file_exists( $file_path ) || is_dir( $file_path ) ) {
+			return false;
+		}
+
+		$norm_path = str_replace( '\\', '/', $file_path );
+		if ( false !== stripos( $norm_path, 'wp-root-guard' ) ) {
 			return false;
 		}
 
@@ -1280,6 +1290,95 @@ class Scanner {
 	}
 
 	/**
+	 * Memeriksa apakah berkas media (gambar) disusupi skrip PHP berbahaya (polyglot backdoor).
+	 * Hanya mendeteksi payload PHP yang benar-benar dapat dieksekusi atau berisi kode berbahaya,
+	 * sehingga mencegah false positive akibat tabrakan byte biner acak (JPEG/PNG entropy collision).
+	 *
+	 * @param string $file_path Path berkas media.
+	 * @param string $content   Isi mentah berkas media.
+	 * @return bool True jika berkas terbukti disusupi backdoor/malware.
+	 */
+	public static function is_malicious_media_payload( $file_path, $content ) {
+		if ( empty( $content ) ) {
+			return false;
+		}
+
+		$ext = strtolower( pathinfo( $file_path, PATHINFO_EXTENSION ) );
+
+		// 1. Khusus SVG (File Grafis Vektor Berbasis XML Teks)
+		if ( 'svg' === $ext ) {
+			// SVG tidak boleh berisi tag eksekusi PHP sama sekali
+			if ( preg_match( '/<\?(?:php|=)/i', $content ) ) {
+				return true;
+			}
+			// Deteksi injeksi XSS / payload berbahaya pada SVG
+			if ( preg_match( '/<script[\s\S]*?>[\s\S]*?<\/script>/i', $content ) ) {
+				return true;
+			}
+			if ( preg_match( '/(?:xlink:href|href)\s*=\s*[\'"](?:javascript|data):/i', $content ) ) {
+				return true;
+			}
+			return false;
+		}
+
+		// 2. Berkas Media Biner (JPG, JPEG, PNG, GIF, ICO, WEBP, BMP)
+		// Cek apakah ada tag pembuka PHP
+		if ( ! preg_match( '/<\?(?:php|=)/i', $content ) ) {
+			return false;
+		}
+
+		// A. Tanda Tangan Webshell / RCE Langsung dalam Gambar
+		// Pola: <?php atau <?= diikuti fungsi RCE, superglobal, backtick, atau decoder
+		$rce_pattern = '/<\?(?:php|=)\s*(?:@?(?:eval|assert|system|exec|shell_exec|passthru|popen|proc_open|pcntl_exec|include|require|include_once|require_once|base64_decode|gzinflate|gzuncompress|str_rot13|hex2bin|file_put_contents|create_function|call_user_func)\s*\(|\$_(?:POST|GET|REQUEST|COOKIE|SERVER|FILES)|`|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*\s*=)/i';
+		if ( preg_match( $rce_pattern, $content ) ) {
+			return true;
+		}
+
+		// B. Keyword Webshell Populer yang disisipkan dalam Gambar
+		$known_shells = array( 'c99shell', 'r57shell', 'b374k', 'wso_version', 'alfa_data', 'FilesMan', 'indoxploit' );
+		foreach ( $known_shells as $shell_sig ) {
+			if ( false !== stripos( $content, $shell_sig ) ) {
+				return true;
+			}
+		}
+
+		// C. Analisis Blok Kode PHP yang Valid
+		// Di berkas biner JPEG/PNG murni, kemunculan 3-byte <?php atau <?= adalah noise acak yang diikuti byte biner non-teks.
+		// Pada backdoor sungguhan, tag PHP akan membungkus sintaks kode teks ASCII yang dapat dibaca parser PHP.
+		if ( preg_match( '/<\?php([\s\S]{3,1000}?)(?:\?>|$)/i', $content, $matches ) ) {
+			$php_code = $matches[1];
+			// Periksa apakah blok ini adalah teks ASCII yang valid (bukan deretan byte acak biner)
+			// Karakter valid: tab (0x09), newline (0x0a), cr (0x0d), dan spasi-tilde (0x20-0x7e)
+			$clean_ascii = preg_replace( '/[\x09\x0a\x0d\x20-\x7e]/', '', $php_code );
+			$total_len   = strlen( $php_code );
+			$binary_len  = strlen( $clean_ascii );
+
+			// Jika blok kode setidaknya 90% ASCII dan memiliki indikasi sintaks PHP (variabel $, fungsi, atau kontrol)
+			if ( $total_len >= 5 && ( $binary_len / $total_len ) < 0.10 ) {
+				if ( preg_match( '/(?:\$[a-zA-Z_\x7f-\xff]|function\s+\w+|\b(?:echo|print|return|eval|assert|system|exec|include|require|if|isset|empty)\b)/i', $php_code ) ) {
+					return true;
+				}
+			}
+		}
+
+		// Cek juga untuk tag pendek <?=
+		if ( preg_match( '/<\?=([\s\S]{2,300}?)(?:\?>|$)/i', $content, $matches ) ) {
+			$php_code    = $matches[1];
+			$clean_ascii = preg_replace( '/[\x09\x0a\x0d\x20-\x7e]/', '', $php_code );
+			$total_len   = strlen( $php_code );
+			$binary_len  = strlen( $clean_ascii );
+
+			if ( $total_len >= 3 && ( $binary_len / $total_len ) < 0.10 ) {
+				if ( preg_match( '/(?:\$[a-zA-Z_\x7f-\xff]|`|\b(?:eval|system|exec|passthru)\b)/i', $php_code ) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Memeriksa apakah suatu berkas di dalam wp-content/themes atau wp-content/plugins
 	 * terindikasi sebagai susupan berbahaya (webshell, backdoor, file tersembunyi, atau injeksi slot).
 	 *
@@ -1289,6 +1388,18 @@ class Scanner {
 	public static function scan_theme_plugin_file( $file_path ) {
 		if ( ! file_exists( $file_path ) || is_dir( $file_path ) ) {
 			return false;
+		}
+
+		// Self-exclusion: jangan pernah memindai berkas WP Root Guard
+		$norm_path = str_replace( '\\', '/', $file_path );
+		if ( false !== stripos( $norm_path, 'wp-root-guard' ) ) {
+			return false;
+		}
+		if ( defined( 'WP_ROOT_GUARD_FILE' ) ) {
+			$rg_dir = str_replace( '\\', '/', dirname( WP_ROOT_GUARD_FILE ) );
+			if ( ! empty( $rg_dir ) && 0 === strpos( $norm_path, $rg_dir ) ) {
+				return false;
+			}
 		}
 
 		$basename = basename( $file_path );
@@ -1307,10 +1418,8 @@ class Scanner {
 			$size = @filesize( $file_path );
 			if ( false !== $size && $size > 0 && $size <= 2 * 1024 * 1024 ) {
 				$content = @file_get_contents( $file_path );
-				if ( false !== $content ) {
-					if ( preg_match( '/<\?(?:php|=)/i', $content ) ) {
-						return esc_html__( 'Berkas Gambar Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
-					}
+				if ( false !== $content && self::is_malicious_media_payload( $file_path, $content ) ) {
+					return esc_html__( 'Berkas Gambar Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
 				}
 			}
 			return false;

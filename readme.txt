@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.7.0
+Stable tag: 3.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -39,9 +39,14 @@ Dengan integrasi API Checksums resmi WordPress.org, plugin ini dapat mendeteksi 
 Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN resmi WordPress.org sesuai versi WordPress terpasang Anda, lalu menimpanya dengan aman.
 
 = Apakah plugin ini memindai folder wp-content? =
-Tidak, karena wp-content berisi berkas dinamis tema, plugin ini berfokus mengamankan area sistem core WordPress (root, wp-admin, wp-includes) serta mendeteksi berkas eksekusi PHP ilegal di folder uploads media.
+Ya, WP Root Guard secara cerdas memindai folder `wp-content/uploads/` untuk mendeteksi berkas eksekusi PHP atau webshell berbahaya, serta memindai `wp-content/themes/` dan `wp-content/plugins/` untuk mendeteksi susupan berkas tersembunyi (stealth dot-files), polyglot image backdoors, webshell, dan injeksi link slot gacor.
 
 == Changelog ==
+
+= 3.7.1 =
+* Perbaikan Kritis Self-Detection (Eliminasi Deteksi Diri Sendiri): Mengesampingkan seluruh berkas, folder, dan cadangan WP Root Guard (termasuk folder versi terdahulu seperti `wp-root-guard-v3.6.2/` atau direktori unzipped) dari seluruh pemindaian sistem. Mencegah tanda tangan malware internal plugin terdeteksi sebagai ancaman oleh dirinya sendiri.
+* Eliminasi False Positive Berkas Gambar (Resilience terhadap Binary Noise Collision): Memperbarui pemindai media `scan_theme_plugin_file()` dengan metode analisis cerdas `is_malicious_media_payload()`. Berkas gambar asli (JPEG/PNG/GIF dari plugin seperti Smush, Branda, Elementor) yang secara kebetulan memuat rangkaian 3-byte biner acak kini dijamin 100% aman dan tidak lagi disalahartikan sebagai backdoor.
+* Pengamanan Opsi Database WP Root Guard: Memastikan riwayat pencatatan temuan scan yang tersimpan di `wp_options` tidak terpicu sebagai opsi mencurigakan saat audit integritas database berjalan.
 
 = 3.7.0 =
 * 1-Click Buang ke Kotak Sampah (Trash Post): Aksi cepat dan aman untuk memindahkan post terindikasi spam slot/judi online ke Kotak Sampah (Trash) WordPress secara langsung dari dasbor Root Guard dengan `wp_trash_post()`. Soft-delete yang aman, tidak merusak database, dan dapat dipulihkan sewaktu-waktu.

@@ -194,6 +194,17 @@ class ScanBatchRunner {
 		$path_norm = str_replace( '\\', '/', ltrim( (string) $path, '/\\' ) );
 		$basename  = basename( $path_norm );
 
+		// 0. WP Root Guard Self-Exclusion: Jangan pernah memindai berkas atau folder milik plugin sendiri
+		if ( false !== stripos( $path_norm, 'wp-root-guard' ) ) {
+			return false;
+		}
+		if ( defined( 'WP_ROOT_GUARD_FILE' ) ) {
+			$rg_plugin_dir = basename( dirname( WP_ROOT_GUARD_FILE ) );
+			if ( ! empty( $rg_plugin_dir ) && false !== stripos( $path_norm, $rg_plugin_dir ) ) {
+				return false;
+			}
+		}
+
 		// 1. Whitelist & Critical File Protection (Req 2 & 3: Never alert or quarantine exempt/whitelisted files)
 		$is_whitelisted = in_array( $path_norm, $whitelist, true ) || in_array( $basename, $whitelist, true ) || ( class_exists( __NAMESPACE__ . '\\Settings' ) && Settings::is_path_whitelisted( $path_norm ) );
 		$is_exempt      = Settings::is_critical_exempt( $path_norm ) || Settings::is_critical_exempt( $basename );
@@ -322,13 +333,22 @@ class ScanBatchRunner {
 	private static function checksums() { if ( null === self::$checksums ) { self::$checksums = Scanner::get_core_checksums(); } return is_array( self::$checksums ) ? self::$checksums : array(); }
 	private static function skip_internal_path( $scope, $path ) {
 		$path = str_replace( '\\', '/', $path );
+
+		// Selalu lewati berkas/folder milik WP Root Guard di scope apapun (termasuk folder backup / versi lama)
+		if ( false !== stripos( $path, 'wp-root-guard' ) ) {
+			return true;
+		}
+		if ( defined( 'WP_ROOT_GUARD_FILE' ) ) {
+			$rg_plugin_dir = basename( dirname( WP_ROOT_GUARD_FILE ) );
+			if ( ! empty( $rg_plugin_dir ) && false !== stripos( $path, $rg_plugin_dir ) ) {
+				return true;
+			}
+		}
+
 		if ( 'uploads_php' === $scope ) {
 			return 0 === strpos( $path, 'wp-content/uploads/wp-root-guard/' ) || 0 === strpos( $path, 'wp-content/uploads/wp-root-guard-quarantine/' );
 		}
 		if ( 'themes_plugins' === $scope ) {
-			if ( 0 === strpos( $path, 'wp-content/plugins/wp-root-guard/' ) || 'wp-content/plugins/wp-root-guard' === $path ) {
-				return true;
-			}
 			$basename = basename( $path );
 			if ( in_array( $basename, array( '.git', '.svn', '.hg', 'node_modules', '.idea', '.vscode' ), true ) ) {
 				return true;
@@ -620,7 +640,7 @@ class ScanBatchRunner {
 			if ( ! isset( $wpdb->options ) ) {
 				return false;
 			}
-			$sql = "SELECT option_name FROM {$wpdb->options} WHERE (
+			$sql = "SELECT option_name FROM {$wpdb->options} WHERE option_name NOT LIKE 'wp_root_guard%' AND option_name NOT LIKE 'wprg_%' AND (
 				option_name LIKE %s OR 
 				option_name LIKE %s OR 
 				option_value LIKE %s OR 

@@ -20,6 +20,11 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.1 (14 Oktober 2026)
+- **Perbaikan Kritis Self-Detection (Eliminasi Deteksi Diri Sendiri)**: Mengesampingkan seluruh berkas, folder, dan cadangan WP Root Guard (termasuk folder versi terdahulu seperti `wp-root-guard-v3.6.2/` atau direktori unzipped) dari seluruh pemindaian sistem. Mencegah tanda tangan malware internal plugin terdeteksi sebagai ancaman oleh dirinya sendiri.
+- **Eliminasi False Positive Berkas Gambar (Resilience terhadap Binary Noise Collision)**: Memperbarui pemindai media `scan_theme_plugin_file()` dengan metode analisis cerdas `is_malicious_media_payload()`. Berkas gambar asli (JPEG/PNG/GIF dari plugin seperti Smush, Branda, Elementor) yang secara kebetulan memuat rangkaian 3-byte biner acak kini dijamin 100% aman dan tidak lagi disalahartikan sebagai backdoor.
+- **Pengamanan Opsi Database WP Root Guard**: Memastikan riwayat pencatatan temuan scan yang tersimpan di `wp_options` tidak terpicu sebagai opsi mencurigakan saat audit integritas database berjalan.
+
 ### v3.7.0 (14 Oktober 2026)
 - **1-Click "Buang ke Kotak Sampah (Trash Post)"**: Aksi cepat dan aman untuk memindahkan post spam slot/judi online ke Kotak Sampah (`wp_trash_post()`) langsung dari dasbor Root Guard tanpa merusak basis data dan dapat dipulihkan sewaktu-waktu.
 - **Aksi Massal Buang ke Sampah (Bulk Trash)**: Tombol pembersihan massal seluruh daftar post terinfeksi dalam 1 kali klik.

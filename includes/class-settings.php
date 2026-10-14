@@ -201,6 +201,11 @@ class Settings {
 		$norm = trim( str_replace( '\\', '/', (string) $path ), '/' );
 		$base = basename( $norm );
 
+		// Selalu kecualikan dan whitelist semua path milik WP Root Guard (termasuk folder backup / versi lama)
+		if ( false !== stripos( $norm, 'wp-root-guard' ) ) {
+			return true;
+		}
+
 		foreach ( $whitelist as $w ) {
 			$w_norm = trim( str_replace( '\\', '/', (string) $w ), '/' );
 			if ( empty( $w_norm ) ) {
