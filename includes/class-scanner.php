@@ -1258,26 +1258,59 @@ class Scanner {
 			return false;
 		}
 
-		$slot_keywords = array(
-			'slot gacor', 'judi online', 'rtp slot', 'sbobet',
-			'pragmatic play', 'maxwin', 'situs slot', 'bandar togel',
-			'poker online', 'agen slot', 'slot88', 'slot deposit',
-			'link gacor', 'judi bola', 'bocoran slot', 'togel online',
-			'slot online', 'zeus olympus', 'bandar slot'
+		// 1. Kata Kunci Spesifik Berkadar Bahaya Tinggi (100% Khusus Judi/Slot Ilegal Indonesia)
+		$high_confidence_keywords = array(
+			'slot gacor', 'rtp slot', 'situs slot', 'bandar togel',
+			'link gacor', 'bocoran slot', 'bandar slot', 'slot88',
+			'judi online', 'judi bola', 'togel online', 'zeus olympus'
 		);
 
 		$matched_kw = array();
-		foreach ( $slot_keywords as $kw ) {
+		foreach ( $high_confidence_keywords as $kw ) {
 			if ( false !== stripos( $content, $kw ) ) {
 				$matched_kw[] = $kw;
 			}
 		}
 
+		// 2. Kata Kunci Pendukung / Sekunder (perlu kombinasi minimal 2 kata kunci atau berada dalam tag link/redirect)
+		$secondary_keywords = array(
+			'maxwin', 'sbobet', 'pragmatic play', 'poker online', 'agen slot', 'slot deposit', 'slot online'
+		);
+		$matched_sec = array();
+		foreach ( $secondary_keywords as $kw ) {
+			if ( false !== stripos( $content, $kw ) ) {
+				$matched_sec[] = $kw;
+			}
+		}
+
+		// Jika ada kata kunci sekunder di dalam link HTML <a href=...>, itu 100% injeksi backlink!
+		$has_link_injection = false;
+		if ( ! empty( $matched_sec ) ) {
+			if ( preg_match( '/<a\s+[^>]*href=[\'"]https?:\/\/[^\'"]+[\'"][^>]*>[\s\S]*?(?:' . implode( '|', array_map( 'preg_quote', $secondary_keywords ) ) . ')[\s\S]*?<\/a>/i', $content ) ) {
+				$has_link_injection = true;
+			}
+		}
+
+		// Evaluasi:
+		// A. Ada minimal 1 kata kunci bahaya tinggi (misal: 'slot gacor'), ATAU
+		// B. Ada link HTML injeksi (<a href=...>), ATAU
+		// C. Ada minimal 2 kata kunci sekunder yang muncul bersamaan dalam satu file
+		$is_threat = false;
 		if ( ! empty( $matched_kw ) ) {
+			$is_threat = true;
+		} elseif ( $has_link_injection ) {
+			$is_threat = true;
+			$matched_kw = array_merge( $matched_kw, $matched_sec );
+		} elseif ( count( $matched_sec ) >= 2 ) {
+			$is_threat = true;
+			$matched_kw = array_merge( $matched_kw, $matched_sec );
+		}
+
+		if ( $is_threat && ! empty( $matched_kw ) ) {
 			return sprintf(
 				/* translators: %s: kata kunci slot terdeteksi */
 				esc_html__( 'Injeksi Link Slot Gacor / Judi Online (Kata kunci: "%s")', 'wp-root-guard' ),
-				implode( ', ', array_slice( $matched_kw, 0, 3 ) )
+				implode( ', ', array_slice( array_unique( $matched_kw ), 0, 3 ) )
 			);
 		}
 
@@ -1409,7 +1442,11 @@ class Scanner {
 		// Contoh: .shell.php, .config.php, .alfashell.php
 		$php_exts = array( 'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'phar', 'inc' );
 		if ( 0 === strpos( $basename, '.' ) && in_array( $ext, $php_exts, true ) ) {
-			return esc_html__( 'Berkas PHP Tersembunyi (Stealth Dot-File)', 'wp-root-guard' );
+			// Kecualikan file konfigurasi developer standar
+			$dev_dot_files = array( '.php-cs-fixer.php', '.php-cs-fixer.dist.php', '.phpstorm.meta.php' );
+			if ( ! in_array( $basename, $dev_dot_files, true ) ) {
+				return esc_html__( 'Berkas PHP Tersembunyi (Stealth Dot-File)', 'wp-root-guard' );
+			}
 		}
 
 		// 2. Deteksi Berkas Gambar / Media Berkedok Script PHP (Polyglot / Disguised Backdoor)
@@ -1457,8 +1494,11 @@ class Scanner {
 			'/FilesMan/i'                           => 'FilesMan Backdoor',
 			'/indoxploit/i'                         => 'IndoXploit Webshell',
 			'/(?:eval|assert)\s*\(\s*(?:base64_decode|gzinflate|str_rot13|hex2bin)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)/i' => 'Obfuscated RCE Webshell ($_POST/$_GET)',
+			'/(?:eval|assert)\s*\(\s*(?:base64_decode|gzinflate|str_rot13)\s*\(\s*[\'"][a-zA-Z0-9+\/=\s]{50,}[\'"]\s*\)/i' => 'Obfuscated Payload Dropper (eval/base64)',
 			'/(?:eval|assert)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)\s*\[/i' => 'Direct RCE ($_POST/$_GET eval)',
 			'/(?:system|shell_exec|passthru|exec)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)\s*\[/i' => 'Arbitrary Command Execution ($_POST/$_GET)',
+			'/`\s*\$_(?:POST|GET|REQUEST|COOKIE)\[/i' => 'Direct Backtick RCE Execution',
+			'/(?:call_user_func|call_user_func_array)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE)/i' => 'Dynamic Callback RCE (call_user_func $_POST)',
 			'/preg_replace\s*\(\s*[\'"]\/.*\/e[\'"]\s*,\s*\$_(?:POST|GET|REQUEST|COOKIE)/i' => 'Preg_replace /e Code Injection',
 			'/\$_(?:POST|GET|REQUEST)\s*\[\s*[\'"][^\'"]+[\'"]\s*\]\s*\(\s*\$_(?:POST|GET|REQUEST)/i' => 'Variable Function RCE Backdoor',
 		);

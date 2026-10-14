@@ -40,6 +40,8 @@ class Settings {
 			'wp-includes',
 			'.well-known',
 			'cgi-bin',
+			'.cpanel',
+			'error_docs',
 		);
 	}
 
@@ -252,6 +254,12 @@ class Settings {
 			'.user.ini',
 			'robots.txt',
 			'favicon.ico',
+			'ads.txt',
+			'app-ads.txt',
+			'sitemap.xml',
+			'sitemap_index.xml',
+			'security.txt',
+			'humans.txt',
 		);
 	}
 

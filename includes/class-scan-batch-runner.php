@@ -235,6 +235,11 @@ class ScanBatchRunner {
 				return false;
 			}
 
+			// Whitelist file verifikasi Google Search Console atau Bing Webmaster yang valid (HTML/XML statis tanpa skrip)
+			if ( preg_match( '/^google[a-f0-9]{16}\.html$/i', $basename ) || 'BingSiteAuth.xml' === $basename ) {
+				return false;
+			}
+
 			// Check against Baseline
 			$baseline = Baseline::get_baseline_files();
 			if ( isset( $baseline[ $path_norm ] ) ) {
@@ -512,11 +517,11 @@ class ScanBatchRunner {
 				$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
 			}
 			$where = implode( ' OR ', $likes );
-			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where})";
+			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND post_type != 'revision' AND ({$where})";
 			$total_found = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 			if ( $total_found > 0 ) {
-				$sql = "SELECT ID, post_title, post_status FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where}) ORDER BY ID DESC LIMIT 15";
+				$sql = "SELECT ID, post_title, post_status FROM {$wpdb->posts} WHERE post_status != 'trash' AND post_type != 'revision' AND ({$where}) ORDER BY ID DESC LIMIT 15";
 				$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 				$first = ! empty( $rows ) ? $rows[0] : (object) array( 'ID' => 0, 'post_title' => '' );
 				$post_id = (int) $first->ID;
@@ -574,7 +579,7 @@ class ScanBatchRunner {
 				'%display:none%http%',
 				'%position:absolute;left:-999%http%'
 			);
-			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
+			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND post_type != 'revision' AND (
 				post_content LIKE %s OR 
 				post_content LIKE %s OR 
 				post_content LIKE %s OR 
@@ -583,7 +588,7 @@ class ScanBatchRunner {
 			$total_found = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 			if ( $total_found > 0 ) {
-				$sql = "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
+				$sql = "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_status != 'trash' AND post_type != 'revision' AND (
 					post_content LIKE %s OR 
 					post_content LIKE %s OR 
 					post_content LIKE %s OR 
