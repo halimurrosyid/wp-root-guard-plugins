@@ -793,6 +793,53 @@
 		}
 	};
 
+	window.trashPost = function (postId, postTitle) {
+		var title = postTitle || ('ID #' + postId);
+		var msg = 'Pindahkan post "' + title + '" ke Kotak Sampah (Trash) WordPress? Post akan dinonaktifkan dari publik namun tetap bisa dipulihkan dari WP Admin jika diperlukan.';
+		if (!confirm(msg)) {
+			return;
+		}
+		var form = document.getElementById('rg-action-form');
+		var actField = document.getElementById('rg-action-field');
+		var postField = document.getElementById('rg-post-id-field');
+		if (form && actField && postField) {
+			actField.value = 'trash_post';
+			postField.value = postId;
+			form.submit();
+		}
+	};
+
+	window.trashAllSlotPosts = function (postIdsStr, count) {
+		var cnt = count || (postIdsStr ? postIdsStr.split(',').length : 0);
+		var msg = 'PERINGATAN: Apakah Anda yakin ingin memindahkan ' + cnt + ' post terinfeksi ini ke Kotak Sampah (Trash) WordPress secara massal?';
+		if (!confirm(msg)) {
+			return;
+		}
+		var form = document.getElementById('rg-action-form');
+		var actField = document.getElementById('rg-action-field');
+		var postsField = document.getElementById('rg-post-ids-field');
+		if (form && actField && postsField) {
+			actField.value = 'trash_all_slot_posts';
+			postsField.value = postIdsStr;
+			form.submit();
+		}
+	};
+
+	window.togglePostsList = function (btn, targetId) {
+		var row = document.getElementById(targetId);
+		if (!row) return;
+		if (row.style.display === 'none' || row.style.display === '') {
+			row.style.display = 'table-row';
+			if (btn) btn.innerHTML = '🔼 Sembunyikan Rincian';
+		} else {
+			row.style.display = 'none';
+			if (btn) {
+				var count = btn.getAttribute('data-count') || '';
+				btn.innerHTML = '📋 ' + (count ? 'Lihat Rincian Post (' + count + ')' : 'Lihat Rincian Post');
+			}
+		}
+	};
+
 	$(document).ready(function () {
 		WPRootGuard.init();
 	});

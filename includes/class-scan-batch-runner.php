@@ -492,10 +492,13 @@ class ScanBatchRunner {
 				$params[] = '%' . $wpdb->esc_like( $kw ) . '%';
 			}
 			$where = implode( ' OR ', $likes );
-			$sql = "SELECT ID, post_title, post_status FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where}) ORDER BY ID DESC LIMIT 5";
-			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-			if ( ! empty( $rows ) ) {
-				$first = $rows[0];
+			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where})";
+			$total_found = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+
+			if ( $total_found > 0 ) {
+				$sql = "SELECT ID, post_title, post_status FROM {$wpdb->posts} WHERE post_status != 'trash' AND ({$where}) ORDER BY ID DESC LIMIT 15";
+				$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+				$first = ! empty( $rows ) ? $rows[0] : (object) array( 'ID' => 0, 'post_title' => '' );
 				$post_id = (int) $first->ID;
 				$post_url = function_exists( 'get_permalink' ) ? get_permalink( $post_id ) : home_url( '/?p=' . $post_id );
 				if ( empty( $post_url ) ) {
@@ -506,21 +509,35 @@ class ScanBatchRunner {
 					$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 				}
 
-				$total_found = count( $rows );
-				$titles = array();
+				$posts_list = array();
+				$titles     = array();
 				foreach ( $rows as $r ) {
-					$titles[] = '#' . $r->ID . ' "' . wp_trim_words( $r->post_title, 4, '...' ) . '"';
+					$pid   = (int) $r->ID;
+					$p_url = function_exists( 'get_permalink' ) ? get_permalink( $pid ) : home_url( '/?p=' . $pid );
+					$e_url = function_exists( 'get_edit_post_link' ) ? get_edit_post_link( $pid, 'raw' ) : admin_url( 'post.php?post=' . $pid . '&action=edit' );
+					$posts_list[] = array(
+						'id'       => $pid,
+						'title'    => ! empty( $r->post_title ) ? $r->post_title : '(Tanpa Judul)',
+						'post_url' => $p_url ?: home_url( '/?p=' . $pid ),
+						'edit_url' => $e_url ?: admin_url( 'post.php?post=' . $pid . '&action=edit' ),
+					);
+					if ( count( $titles ) < 5 ) {
+						$titles[] = '#' . $pid . ' "' . wp_trim_words( $r->post_title, 4, '...' ) . '"';
+					}
 				}
+
 				$finding = self::finding(
 					'database_threat',
 					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
 					'Database: ' . $wpdb->prefix . 'posts (Ditemukan ' . $total_found . ' post slot)',
 					'Injeksi Konten Slot Gacor',
-					'Ditemukan post mengandung kata kunci judi/slot gacor: ' . implode( ', ', $titles )
+					'Ditemukan ' . $total_found . ' post mengandung kata kunci judi/slot gacor: ' . implode( ', ', $titles )
 				);
-				$finding['post_id']  = $post_id;
-				$finding['post_url'] = $post_url;
-				$finding['edit_url'] = $edit_url;
+				$finding['post_id']           = $post_id;
+				$finding['post_url']          = $post_url;
+				$finding['edit_url']          = $edit_url;
+				$finding['total_posts_count'] = $total_found;
+				$finding['posts_list']        = $posts_list;
 				return $finding;
 			}
 			return false;
@@ -531,21 +548,29 @@ class ScanBatchRunner {
 			if ( ! isset( $wpdb->posts ) ) {
 				return false;
 			}
-			$sql = "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
-				post_content LIKE %s OR 
-				post_content LIKE %s OR 
-				post_content LIKE %s OR 
-				post_content LIKE %s
-			) ORDER BY ID DESC LIMIT 5";
 			$params = array(
 				'%<iframe%display:none%',
 				'%<iframe%visibility:hidden%',
 				'%display:none%http%',
 				'%position:absolute;left:-999%http%'
 			);
-			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-			if ( ! empty( $rows ) ) {
-				$first = $rows[0];
+			$count_sql = "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
+				post_content LIKE %s OR 
+				post_content LIKE %s OR 
+				post_content LIKE %s OR 
+				post_content LIKE %s
+			)";
+			$total_found = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+
+			if ( $total_found > 0 ) {
+				$sql = "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_status != 'trash' AND (
+					post_content LIKE %s OR 
+					post_content LIKE %s OR 
+					post_content LIKE %s OR 
+					post_content LIKE %s
+				) ORDER BY ID DESC LIMIT 15";
+				$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+				$first = ! empty( $rows ) ? $rows[0] : (object) array( 'ID' => 0, 'post_title' => '' );
 				$post_id = (int) $first->ID;
 				$post_url = function_exists( 'get_permalink' ) ? get_permalink( $post_id ) : home_url( '/?p=' . $post_id );
 				if ( empty( $post_url ) ) {
@@ -556,16 +581,35 @@ class ScanBatchRunner {
 					$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 				}
 
+				$posts_list = array();
+				$titles     = array();
+				foreach ( $rows as $r ) {
+					$pid   = (int) $r->ID;
+					$p_url = function_exists( 'get_permalink' ) ? get_permalink( $pid ) : home_url( '/?p=' . $pid );
+					$e_url = function_exists( 'get_edit_post_link' ) ? get_edit_post_link( $pid, 'raw' ) : admin_url( 'post.php?post=' . $pid . '&action=edit' );
+					$posts_list[] = array(
+						'id'       => $pid,
+						'title'    => ! empty( $r->post_title ) ? $r->post_title : '(Tanpa Judul)',
+						'post_url' => $p_url ?: home_url( '/?p=' . $pid ),
+						'edit_url' => $e_url ?: admin_url( 'post.php?post=' . $pid . '&action=edit' ),
+					);
+					if ( count( $titles ) < 5 ) {
+						$titles[] = '#' . $pid . ' "' . wp_trim_words( $r->post_title, 4, '...' ) . '"';
+					}
+				}
+
 				$finding = self::finding(
 					'database_threat',
 					'wp_posts [ID: ' . $first->ID . ' - ' . wp_trim_words( $first->post_title, 5, '...' ) . ']',
-					'Database: ' . $wpdb->prefix . 'posts -> ID ' . $first->ID,
+					'Database: ' . $wpdb->prefix . 'posts (Ditemukan ' . $total_found . ' post stealth)',
 					'Injeksi Stealth Iframe / Redirect',
-					'Ditemukan elemen tersembunyi (hidden iframe / invisible spam div) dalam konten post'
+					'Ditemukan ' . $total_found . ' post dengan elemen tersembunyi (hidden iframe / invisible spam div): ' . implode( ', ', $titles )
 				);
-				$finding['post_id']  = $post_id;
-				$finding['post_url'] = $post_url;
-				$finding['edit_url'] = $edit_url;
+				$finding['post_id']           = $post_id;
+				$finding['post_url']          = $post_url;
+				$finding['edit_url']          = $edit_url;
+				$finding['total_posts_count'] = $total_found;
+				$finding['posts_list']        = $posts_list;
 				return $finding;
 			}
 			return false;

@@ -558,6 +558,79 @@ class Admin {
 				}
 				break;
 
+			case 'trash_post':
+				$post_id = isset( $_POST['target_post_id'] ) ? (int) $_POST['target_post_id'] : 0;
+				if ( $post_id > 0 ) {
+					if ( ! current_user_can( 'edit_post', $post_id ) && ! current_user_can( 'manage_options' ) ) {
+						wp_safe_redirect( add_query_arg( 'message', 'post_trash_failed', $redirect_url ) );
+						exit;
+					}
+					$post_title = get_the_title( $post_id );
+					$result     = wp_trash_post( $post_id );
+					if ( false !== $result && ! is_wp_error( $result ) ) {
+						Logger::log(
+							sprintf(
+								/* translators: 1: post ID, 2: judul post */
+								esc_html__( 'Post spam/slot dipindahkan ke Kotak Sampah [ID: %1$d - "%2$s"]', 'wp-root-guard' ),
+								$post_id,
+								wp_trim_words( $post_title, 5, '...' )
+							),
+							'Post ID: ' . $post_id,
+							esc_html__( 'Trashed', 'wp-root-guard' )
+						);
+						Scanner::perform_scan( 'admin' );
+						wp_safe_redirect( add_query_arg( 'message', 'post_trashed', $redirect_url ) );
+					} else {
+						Logger::log(
+							sprintf(
+								/* translators: 1: post ID */
+								esc_html__( 'Gagal membuang post ke Kotak Sampah [ID: %d]', 'wp-root-guard' ),
+								$post_id
+							),
+							'Post ID: ' . $post_id,
+							esc_html__( 'Error', 'wp-root-guard' )
+						);
+						wp_safe_redirect( add_query_arg( 'message', 'post_trash_failed', $redirect_url ) );
+					}
+					exit;
+				}
+				break;
+
+			case 'trash_all_slot_posts':
+				$post_ids_raw = isset( $_POST['target_post_ids'] ) ? sanitize_text_field( $_POST['target_post_ids'] ) : '';
+				$post_ids     = array_filter( array_map( 'intval', explode( ',', $post_ids_raw ) ) );
+				if ( ! empty( $post_ids ) ) {
+					$success_count = 0;
+					foreach ( $post_ids as $pid ) {
+						if ( $pid > 0 && ( current_user_can( 'edit_post', $pid ) || current_user_can( 'manage_options' ) ) ) {
+							$res = wp_trash_post( $pid );
+							if ( false !== $res && ! is_wp_error( $res ) ) {
+								$success_count++;
+							}
+						}
+					}
+					if ( $success_count > 0 ) {
+						Logger::log(
+							sprintf(
+								/* translators: %d: jumlah post */
+								esc_html__( 'Sebanyak %d post spam/slot dipindahkan ke Kotak Sampah secara massal', 'wp-root-guard' ),
+								$success_count
+							),
+							'Post IDs: ' . implode( ', ', $post_ids ),
+							esc_html__( 'Bulk Trashed', 'wp-root-guard' )
+						);
+						Scanner::perform_scan( 'admin' );
+						wp_safe_redirect( add_query_arg( array(
+							'message' => 'posts_bulk_trashed',
+							'count'   => $success_count,
+						), $redirect_url ) );
+					} else {
+						wp_safe_redirect( add_query_arg( 'message', 'post_trash_failed', $redirect_url ) );
+					}
+					exit;
+				}
+				break;
+
 			case 'export_logs_csv':
 				$logs_export = Logger::get_logs();
 				if ( empty( $logs_export ) ) {
@@ -970,6 +1043,17 @@ class Admin {
 				$notice_class = 'notice-error';
 				$notice_text  = esc_html__( 'Gagal menghapus item karantina dari server.', 'wp-root-guard' );
 				break;
+			case 'post_trashed':
+				$notice_text = esc_html__( 'Post spam/slot berhasil dipindahkan ke Kotak Sampah (Trash) WordPress.', 'wp-root-guard' );
+				break;
+			case 'posts_bulk_trashed':
+				$count = isset( $_GET['count'] ) ? intval( $_GET['count'] ) : 0;
+				$notice_text = sprintf( /* translators: %d: jumlah post */ esc_html__( 'Sebanyak %d post spam/slot berhasil dipindahkan ke Kotak Sampah (Trash) WordPress.', 'wp-root-guard' ), $count );
+				break;
+			case 'post_trash_failed':
+				$notice_class = 'notice-error';
+				$notice_text  = esc_html__( 'Gagal memindahkan post ke Kotak Sampah. Pastikan Anda memiliki hak akses mengedit post ini.', 'wp-root-guard' );
+				break;
 		}
 
 		?>
@@ -998,6 +1082,8 @@ class Admin {
 				<?php wp_nonce_field( 'wp_root_guard_admin_action', 'wp_root_guard_action_nonce' ); ?>
 				<input type="hidden" name="rg_action" id="rg-action-field" value="">
 				<input type="hidden" name="folder" id="rg-folder-field" value="">
+				<input type="hidden" name="target_post_id" id="rg-post-id-field" value="">
+				<input type="hidden" name="target_post_ids" id="rg-post-ids-field" value="">
 			</form>
 
 			<?php if ( 'dashboard' === $active_tab ) : ?>
@@ -1697,7 +1783,7 @@ class Admin {
 							<?php endif; ?>
 						</h2>
 						<span class="rg-badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 600; padding: 4px 10px; border-radius: 4px;">
-							🛡️ <?php esc_html_e( 'Mode Aman: Hanya Deteksi (Read-Only)', 'wp-root-guard' ); ?>
+							🛡️ <?php esc_html_e( 'Mode Aman: Tindakan Terkendali (Trash Reversibel)', 'wp-root-guard' ); ?>
 						</span>
 					</div>
 					<div class="rg-card-body">
@@ -1707,8 +1793,8 @@ class Admin {
 							</div>
 						<?php else : ?>
 							<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: #166534;">
-								<strong>🛡️ <?php esc_html_e( 'Keamanan Database Terjamin (Mode Read-Only):', 'wp-root-guard' ); ?></strong>
-								<?php esc_html_e( 'Pemindaian database bekerja murni untuk mendeteksi ancaman tanpa mengeksekusi penghapusan atau query modifikasi otomatis. Data Anda tetap utuh dan aman. Silakan tinjau dan periksa temuan di bawah ini secara manual.', 'wp-root-guard' ); ?>
+								<strong>🛡️ <?php esc_html_e( 'Keamanan Database Terjamin (Mode Aman):', 'wp-root-guard' ); ?></strong>
+								<?php esc_html_e( 'Pemindaian database mendeteksi indikasi injeksi spam tanpa modifikasi otomatis di latar belakang. Anda dapat meninjau temuan dan memindahkan post yang terinfeksi ke Kotak Sampah (Trash) WordPress secara aman dengan 1-klik (dapat dipulihkan kapan saja).', 'wp-root-guard' ); ?>
 							</div>
 							<table class="wp-list-table widefat fixed striped posts rg-styled-table">
 								<thead>
@@ -1718,13 +1804,41 @@ class Admin {
 										<th><?php esc_html_e( 'Indikasi Bahaya / Keterangan', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Waktu Terdeteksi', 'wp-root-guard' ); ?></th>
 										<th><?php esc_html_e( 'Status', 'wp-root-guard' ); ?></th>
-										<th style="width: 280px;"><?php esc_html_e( 'Panduan Tindakan / Aksi', 'wp-root-guard' ); ?></th>
+										<th style="width: 320px;"><?php esc_html_e( 'Panduan Tindakan / Aksi', 'wp-root-guard' ); ?></th>
 									</tr>
 								</thead>
 								<tbody>
-									<?php foreach ( $active_database as $item ) : ?>
+									<?php
+									$db_row_index = 0;
+									foreach ( $active_database as $item ) :
+										$db_row_index++;
+										$post_id = 0;
+										if ( ! empty( $item['post_id'] ) ) {
+											$post_id = absint( $item['post_id'] );
+										} elseif ( preg_match( '/ID:\s*(\d+)/', $item['name'], $m ) ) {
+											$post_id = absint( $m[1] );
+										}
+										$post_url = ! empty( $item['post_url'] ) ? $item['post_url'] : ( $post_id ? get_permalink( $post_id ) : '' );
+										$edit_url = ! empty( $item['edit_url'] ) ? $item['edit_url'] : ( $post_id ? get_edit_post_link( $post_id, 'raw' ) : '' );
+										if ( empty( $edit_url ) && $post_id ) {
+											$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+										}
+
+										$total_posts  = ! empty( $item['total_posts_count'] ) ? (int) $item['total_posts_count'] : ( $post_id ? 1 : 0 );
+										$posts_list   = ! empty( $item['posts_list'] ) && is_array( $item['posts_list'] ) ? $item['posts_list'] : array();
+										$has_multiple = ( $total_posts > 1 && count( $posts_list ) > 1 );
+										$sub_row_id   = 'rg-posts-row-' . $db_row_index;
+									?>
 										<tr>
-											<td><strong class="text-danger"><?php echo esc_html( $item['name'] ); ?></strong></td>
+											<td>
+												<strong class="text-danger"><?php echo esc_html( $item['name'] ); ?></strong>
+												<?php if ( $total_posts > 1 ) : ?>
+													<br>
+													<span class="rg-badge badge-danger" style="margin-top: 5px; display: inline-block;">
+														🚨 <?php echo sprintf( esc_html__( 'Total %d Post Terdeteksi', 'wp-root-guard' ), $total_posts ); ?>
+													</span>
+												<?php endif; ?>
+											</td>
 											<td><code><?php echo esc_html( $item['path'] ); ?></code></td>
 											<td>
 												<span class="text-danger" style="font-size: 13px; font-weight: 600;">
@@ -1736,30 +1850,28 @@ class Admin {
 												<span class="rg-badge badge-danger"><?php echo esc_html( $item['status'] ); ?></span>
 											</td>
 											<td>
-												<?php
-												$post_id = 0;
-												if ( ! empty( $item['post_id'] ) ) {
-													$post_id = absint( $item['post_id'] );
-												} elseif ( preg_match( '/ID:\s*(\d+)/', $item['name'], $m ) ) {
-													$post_id = absint( $m[1] );
-												}
-												$post_url = ! empty( $item['post_url'] ) ? $item['post_url'] : ( $post_id ? get_permalink( $post_id ) : '' );
-												$edit_url = ! empty( $item['edit_url'] ) ? $item['edit_url'] : ( $post_id ? get_edit_post_link( $post_id, 'raw' ) : '' );
-												if ( empty( $edit_url ) && $post_id ) {
-													$edit_url = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
-												}
-												?>
-												<?php if ( $post_url ) : ?>
-													<a href="<?php echo esc_url( $post_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
-														🔗 <?php esc_html_e( 'Lihat Post', 'wp-root-guard' ); ?>
-													</a>
-												<?php endif; ?>
-												<?php if ( $edit_url ) : ?>
-													<a href="<?php echo esc_url( $edit_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
-														✏️ <?php esc_html_e( 'Edit di WP Admin', 'wp-root-guard' ); ?>
-													</a>
-												<?php endif; ?>
-												<?php if ( ! $post_url && ! $edit_url ) : ?>
+												<?php if ( $has_multiple ) : ?>
+													<button type="button" class="button button-small button-secondary" data-count="<?php echo count( $posts_list ); ?>" onclick="togglePostsList(this, '<?php echo esc_js( $sub_row_id ); ?>')" style="margin-bottom: 4px; margin-right: 4px;">
+														📋 <?php printf( esc_html__( 'Lihat Rincian Post (%d)', 'wp-root-guard' ), count( $posts_list ) ); ?>
+													</button>
+													<button type="button" class="button button-small" style="background: #dc2626; color: #ffffff; border-color: #b91c1c; margin-bottom: 4px; margin-right: 4px;" onclick="trashAllSlotPosts('<?php echo esc_js( implode( ',', wp_list_pluck( $posts_list, 'id' ) ) ); ?>', <?php echo count( $posts_list ); ?>)">
+														🗑️ <?php printf( esc_html__( 'Buang Semua (%d) ke Sampah', 'wp-root-guard' ), count( $posts_list ) ); ?>
+													</button>
+												<?php elseif ( $post_id > 0 ) : ?>
+													<?php if ( $post_url ) : ?>
+														<a href="<?php echo esc_url( $post_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
+															🔗 <?php esc_html_e( 'Lihat Post', 'wp-root-guard' ); ?>
+														</a>
+													<?php endif; ?>
+													<?php if ( $edit_url ) : ?>
+														<a href="<?php echo esc_url( $edit_url ); ?>" target="_blank" class="button button-small button-secondary" style="text-decoration: none; margin-right: 4px;">
+															✏️ <?php esc_html_e( 'Edit', 'wp-root-guard' ); ?>
+														</a>
+													<?php endif; ?>
+													<button type="button" class="button button-small" style="color: #b91c1c; border-color: #fca5a5; margin-right: 4px;" onclick="trashPost(<?php echo (int) $post_id; ?>, '<?php echo esc_js( addslashes( get_the_title( $post_id ) ) ); ?>')">
+														🗑️ <?php esc_html_e( 'Buang ke Sampah', 'wp-root-guard' ); ?>
+													</button>
+												<?php else : ?>
 													<span style="font-size: 12px; color: #64748b; font-style: italic; margin-right: 6px;">
 														ℹ️ <?php esc_html_e( 'Periksa di phpMyAdmin', 'wp-root-guard' ); ?>
 													</span>
@@ -1769,6 +1881,50 @@ class Admin {
 												</button>
 											</td>
 										</tr>
+										<?php if ( $has_multiple ) : ?>
+											<tr id="<?php echo esc_attr( $sub_row_id ); ?>" style="display: none; background: #fffaf0;">
+												<td colspan="6" style="padding: 12px 18px; border-bottom: 2px solid #fed7aa;">
+													<div style="background: #ffffff; border: 1px solid #fbd38d; border-radius: 6px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+														<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #fed7aa; padding-bottom: 8px;">
+															<strong style="color: #9a3412; font-size: 13px;">
+																📋 <?php printf( esc_html__( 'Daftar %1$d dari Total %2$d Post Terinfeksi yang Ditemukan di Database:', 'wp-root-guard' ), count( $posts_list ), $total_posts ); ?>
+															</strong>
+															<button type="button" class="button button-small" style="background: #dc2626; color: #ffffff; border-color: #b91c1c;" onclick="trashAllSlotPosts('<?php echo esc_js( implode( ',', wp_list_pluck( $posts_list, 'id' ) ) ); ?>', <?php echo count( $posts_list ); ?>)">
+																🗑️ <?php printf( esc_html__( 'Buang Semua %d Post Ini ke Sampah', 'wp-root-guard' ), count( $posts_list ) ); ?>
+															</button>
+														</div>
+														<div style="max-height: 280px; overflow-y: auto;">
+															<ul style="margin: 0; padding: 0; list-style: none;">
+																<?php foreach ( $posts_list as $p ) : ?>
+																	<li style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #e2e8f0;">
+																		<div style="flex: 1; padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+																			<span style="font-weight: 600; color: #1e293b;">#<?php echo esc_html( $p['id'] ); ?></span> -
+																			<span style="color: #334155;" title="<?php echo esc_attr( $p['title'] ); ?>"><?php echo esc_html( $p['title'] ); ?></span>
+																		</div>
+																		<div style="display: flex; gap: 4px; flex-shrink: 0;">
+																			<a href="<?php echo esc_url( $p['post_url'] ); ?>" target="_blank" class="button button-small button-secondary">
+																				🔗 <?php esc_html_e( 'Lihat', 'wp-root-guard' ); ?>
+																			</a>
+																			<a href="<?php echo esc_url( $p['edit_url'] ); ?>" target="_blank" class="button button-small button-secondary">
+																				✏️ <?php esc_html_e( 'Edit', 'wp-root-guard' ); ?>
+																			</a>
+																			<button type="button" class="button button-small" style="color: #b91c1c; border-color: #fca5a5;" onclick="trashPost(<?php echo (int) $p['id']; ?>, '<?php echo esc_js( addslashes( $p['title'] ) ); ?>')">
+																				🗑️ <?php esc_html_e( 'Buang ke Sampah', 'wp-root-guard' ); ?>
+																			</button>
+																		</div>
+																	</li>
+																<?php endforeach; ?>
+															</ul>
+														</div>
+														<?php if ( $total_posts > count( $posts_list ) ) : ?>
+															<p style="margin: 8px 0 0 0; font-size: 12px; color: #718096; font-style: italic;">
+																ℹ️ <?php printf( esc_html__( 'Menampilkan 15 post teratas. Masih ada %d post lainnya di database. Setelah post di atas dibuang ke sampah, lakukan scan ulang untuk memuat sisa post yang terinfeksi.', 'wp-root-guard' ), $total_posts - count( $posts_list ) ); ?>
+															</p>
+														<?php endif; ?>
+													</div>
+												</td>
+											</tr>
+										<?php endif; ?>
 									<?php endforeach; ?>
 								</tbody>
 							</table>
