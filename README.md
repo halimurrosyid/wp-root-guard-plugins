@@ -20,6 +20,11 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.2 (14 Oktober 2026)
+- **Eliminasi False Positive Ikon Vektor SVG**: Memperbarui deteksi media SVG pada `is_malicious_media_payload()` agar mengenali standar resmi W3C untuk gambar raster yang disematkan (`data:image/png`, `data:image/jpeg`, `data:image/webp`). Ikon resmi dari plugin terkemuka (Tutor LMS, WPMU DEV Dashboard, Jetpack) tidak lagi keliru terdeteksi sebagai backdoor.
+- **Inspektur Kode Interaktif Berpenanda Cerdas (Smart Threat Highlighting)**: Penandaan baris bahaya otomatis dengan sorotan merah, penanda kata kunci spesifik inline (`<mark>`), navigasi cepat nomor baris bahaya (`[📍 Baris X]`), tombol Sebelumnya & Berikutnya, serta auto-scroll otomatis langsung ke lokasi bahaya pertama saat modal dibuka.
+- **Perluasan Heuristik Webshell Modern**: Menambahkan deteksi keluarga webshell kontemporer (Weevely, p0wny-shell, AnonymousFox, IndoXploit, FilesMan), eksekusi payload melalui HTTP Header `$_SERVER`, dan remote payload droppers (`eval(file_get_contents)` / `assert(curl_exec)`).
+
 ### v3.7.1 (14 Oktober 2026)
 - **Perbaikan Kritis Self-Detection (Eliminasi Deteksi Diri Sendiri)**: Mengesampingkan seluruh berkas, folder, dan cadangan WP Root Guard (termasuk folder versi terdahulu seperti `wp-root-guard-v3.6.2/` atau direktori unzipped) dari seluruh pemindaian sistem. Mencegah tanda tangan malware internal plugin terdeteksi sebagai ancaman oleh dirinya sendiri.
 - **Eliminasi False Positive Berkas Gambar (Resilience terhadap Binary Noise Collision)**: Memperbarui pemindai media `scan_theme_plugin_file()` dengan metode analisis cerdas `is_malicious_media_payload()`. Berkas gambar asli (JPEG/PNG/GIF dari plugin seperti Smush, Branda, Elementor) yang secara kebetulan memuat rangkaian 3-byte biner acak kini dijamin 100% aman dan tidak lagi disalahartikan sebagai backdoor.
