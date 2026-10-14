@@ -1345,16 +1345,22 @@ class Scanner {
 
 		// 1. Khusus SVG (File Grafis Vektor Berbasis XML Teks)
 		if ( 'svg' === $ext ) {
-			// SVG tidak boleh berisi tag eksekusi PHP sama sekali
+			// A. SVG tidak boleh berisi tag eksekusi PHP sama sekali (Disguised PHP Backdoor)
 			if ( preg_match( '/<\?(?:php|=)/i', $content ) ) {
-				return true;
+				return esc_html__( 'Berkas SVG Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
 			}
-			// Deteksi injeksi XSS / payload berbahaya pada SVG
+			// B. Deteksi skrip executable aktif (<script> tag)
 			if ( preg_match( '/<script[\s\S]*?>[\s\S]*?<\/script>/i', $content ) ) {
-				return true;
+				return esc_html__( 'Berkas SVG Disusupi Skrip XSS (<script> payload)', 'wp-root-guard' );
 			}
-			if ( preg_match( '/(?:xlink:href|href)\s*=\s*[\'"](?:javascript|data):/i', $content ) ) {
-				return true;
+			// C. Deteksi event handler inline XSS (onload, onerror, onclick, dll.)
+			if ( preg_match( '/\b(?:onload|onerror|onclick|onmouseover|onfocus)\s*=\s*[\'"][^\'"]*[\'"]/i', $content ) ) {
+				return esc_html__( 'Berkas SVG Disusupi Inline XSS Event', 'wp-root-guard' );
+			}
+			// D. Deteksi URI berbahaya: javascript: atau data: yang mengeksekusi HTML/JS
+			// Catatan: data:image/(png|jpeg|jpg|gif|webp|svg+xml) adalah standar resmi penyematan gambar di SVG dan AMAN.
+			if ( preg_match( '/(?:xlink:href|href)\s*=\s*[\'"]\s*(?:javascript:|data:(?!image\/(?:png|jpe?g|gif|webp|svg\+xml)\b))/i', $content ) ) {
+				return esc_html__( 'Berkas SVG Disusupi Link JavaScript / XSS', 'wp-root-guard' );
 			}
 			return false;
 		}
@@ -1460,8 +1466,11 @@ class Scanner {
 			$size = @filesize( $file_path );
 			if ( false !== $size && $size > 0 && $size <= 2 * 1024 * 1024 ) {
 				$content = @file_get_contents( $file_path );
-				if ( false !== $content && self::is_malicious_media_payload( $file_path, $content ) ) {
-					return esc_html__( 'Berkas Gambar Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
+				if ( false !== $content ) {
+					$media_threat = self::is_malicious_media_payload( $file_path, $content );
+					if ( false !== $media_threat ) {
+						return is_string( $media_threat ) ? $media_threat : esc_html__( 'Berkas Gambar Disusupi Skrip PHP (Fake Media Backdoor)', 'wp-root-guard' );
+					}
 				}
 			}
 			return false;
