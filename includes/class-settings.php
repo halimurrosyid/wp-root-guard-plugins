@@ -317,7 +317,7 @@ class Settings {
 	 */
 	public static function get_settings() {
 		$defaults = array(
-			'scan_interval'                 => 'hourly',
+			'scan_interval'                 => 'every_3_hours',
 			'enable_uploads_php_scan'       => true,
 			'enable_uploads_auto_quarantine' => true,
 			'enable_ip_blocker'             => false,
@@ -364,7 +364,7 @@ class Settings {
 		if ( isset( $new_settings['scan_interval'] ) ) {
 			$old_interval    = isset( $settings['scan_interval'] ) ? $settings['scan_interval'] : '';
 			$new_interval    = sanitize_text_field( $new_settings['scan_interval'] );
-			$valid_intervals = array( 'every_5_minutes', 'every_15_minutes', 'every_30_minutes', 'hourly', 'twicedaily', 'daily' );
+			$valid_intervals = array( 'every_5_minutes', 'every_15_minutes', 'every_30_minutes', 'hourly', 'every_3_hours', 'twicedaily', 'daily' );
 			if ( in_array( $new_interval, $valid_intervals, true ) ) {
 				$settings['scan_interval'] = $new_interval;
 				if ( $old_interval !== $new_interval ) {

@@ -80,7 +80,7 @@ class Cron {
 	}
 
 	/**
-	 * Menambahkan interval kustom (5 menit, 15 menit, 30 menit) ke daftar jadwal cron WordPress.
+	 * Menambahkan interval kustom (5 menit, 15 menit, 30 menit, 3 jam) ke daftar jadwal cron WordPress.
 	 *
 	 * @param array $schedules Daftar jadwal cron saat ini.
 	 * @return array Daftar jadwal cron setelah ditambah interval kustom.
@@ -102,6 +102,10 @@ class Cron {
 			'interval' => 1800,
 			'display'  => esc_html__( 'Setiap 30 Menit', 'wp-root-guard' ),
 		);
+		$schedules['every_3_hours'] = array(
+			'interval' => 10800,
+			'display'  => esc_html__( 'Setiap 3 Jam', 'wp-root-guard' ),
+		);
 
 		return $schedules;
 	}
@@ -117,7 +121,7 @@ class Cron {
 	public static function schedule_event() {
 		self::register_schedules();
 
-		$interval = 'hourly';
+		$interval = 'every_3_hours';
 		if ( class_exists( __NAMESPACE__ . '\\Settings' ) ) {
 			$settings = Settings::get_settings();
 			if ( ! empty( $settings['scan_interval'] ) ) {
@@ -127,7 +131,7 @@ class Cron {
 
 		$schedules = wp_get_schedules();
 		if ( ! isset( $schedules[ $interval ] ) ) {
-			$interval = 'hourly';
+			$interval = 'every_3_hours';
 		}
 
 		$success = true;
@@ -172,9 +176,9 @@ class Cron {
 		self::register_schedules();
 
 		$settings = class_exists( __NAMESPACE__ . '\\Settings' ) ? Settings::get_settings() : array();
-		$interval = ! empty( $settings['scan_interval'] ) ? sanitize_key( $settings['scan_interval'] ) : 'hourly';
+		$interval = ! empty( $settings['scan_interval'] ) ? sanitize_key( $settings['scan_interval'] ) : 'every_3_hours';
 		$schedules = wp_get_schedules();
-		$interval_seconds = isset( $schedules[ $interval ]['interval'] ) ? (int) $schedules[ $interval ]['interval'] : 3600;
+		$interval_seconds = isset( $schedules[ $interval ]['interval'] ) ? (int) $schedules[ $interval ]['interval'] : 10800;
 		$event = wp_get_scheduled_event( self::SCAN_HOOK );
 		$now = time();
 		$lock = new ScanLock();
@@ -346,7 +350,7 @@ class Cron {
 		$valid_interval = sanitize_key( $new_interval );
 		$schedules      = wp_get_schedules();
 		if ( empty( $valid_interval ) || ! isset( $schedules[ $valid_interval ] ) ) {
-			$valid_interval = 'hourly';
+			$valid_interval = 'every_3_hours';
 		}
 
 		$result  = wp_schedule_event( time(), $valid_interval, self::SCAN_HOOK, array(), true );

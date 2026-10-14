@@ -20,6 +20,10 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.4 (14 Oktober 2026)
+- **Interval Pemindaian Bawaan 3 Jam (Default 3-Hour Background Scan)**: Menambahkan interval pemindaian latar belakang "Setiap 3 Jam" (`every_3_hours` / 10.800 detik) ke dalam scheduler WP-Cron dan menjadikannya sebagai frekuensi default & direkomendasikan untuk stabilitas dan proteksi optimal server.
+- **Penyelarasan Pengaturan Scheduler**: Memperbarui dropdown pengaturan frekuensi pemindaian dengan opsi `Setiap 3 Jam (Default / Direkomendasikan)` serta label `Setiap 1 Jam`.
+
 ### v3.7.3 (14 Oktober 2026)
 - **Perbaikan Kritis UI Dark Cyber Scanner**: Memperbaiki penutupan kurung kurawal CSS pada animasi `@keyframes rgSlideUp` yang sempat membuat styling panel radar pemindai (`.rg-dark-scanner-card`) tidak ter-render oleh browser. Tampilan radar dark cyber scanner kini kembali mulus, futuristik, dan terisi lengkap.
 

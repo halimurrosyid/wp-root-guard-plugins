@@ -454,7 +454,7 @@ class Admin {
 
 			case 'save_settings':
 				$settings_data = array(
-					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'hourly',
+					'scan_interval'                => isset( $_POST['scan_interval'] ) ? sanitize_text_field( $_POST['scan_interval'] ) : 'every_3_hours',
 					'enable_uploads_php_scan'      => isset( $_POST['enable_uploads_php_scan'] ),
 					'enable_uploads_auto_quarantine' => isset( $_POST['enable_uploads_auto_quarantine'] ),
 					'enable_ip_blocker'            => isset( $_POST['enable_ip_blocker'] ),
@@ -2393,7 +2393,8 @@ class Admin {
 								<div class="rg-form-group">
 									<label for="scan_interval"><strong><?php esc_html_e( 'Frekuensi Pemindaian Sistem (WP Cron)', 'wp-root-guard' ); ?></strong></label>
 									<select name="scan_interval" id="scan_interval" class="regular-text" style="margin-top: 6px; display: block;">
-										<option value="hourly" <?php selected( $settings['scan_interval'], 'hourly' ); ?>><?php esc_html_e( 'Setiap 1 Jam (Default / Direkomendasikan)', 'wp-root-guard' ); ?></option>
+										<option value="every_3_hours" <?php selected( $settings['scan_interval'], 'every_3_hours' ); ?>><?php esc_html_e( 'Setiap 3 Jam (Default / Direkomendasikan)', 'wp-root-guard' ); ?></option>
+										<option value="hourly" <?php selected( $settings['scan_interval'], 'hourly' ); ?>><?php esc_html_e( 'Setiap 1 Jam', 'wp-root-guard' ); ?></option>
 										<option value="every_5_minutes" <?php selected( $settings['scan_interval'], 'every_5_minutes' ); ?>><?php esc_html_e( 'Setiap 5 Menit (Proteksi Maksimal / Intensif)', 'wp-root-guard' ); ?></option>
 										<option value="every_15_minutes" <?php selected( $settings['scan_interval'], 'every_15_minutes' ); ?>><?php esc_html_e( 'Setiap 15 Menit', 'wp-root-guard' ); ?></option>
 										<option value="every_30_minutes" <?php selected( $settings['scan_interval'], 'every_30_minutes' ); ?>><?php esc_html_e( 'Setiap 30 Menit', 'wp-root-guard' ); ?></option>
