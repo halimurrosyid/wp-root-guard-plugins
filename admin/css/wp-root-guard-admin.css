@@ -623,6 +623,63 @@ code {
 @keyframes rgSlideUp {
 	from { transform: translateY(20px); opacity: 0; }
 	to { transform: translateY(0); opacity: 1; }
+/* Code Inspector Danger Highlighting & Navigation */
+@keyframes rgThreatPulse {
+	0% { background-color: #7f1d1d; box-shadow: inset 0 0 15px rgba(239, 68, 68, 0.9); }
+	50% { background-color: #991b1b; box-shadow: inset 0 0 25px rgba(248, 113, 113, 1); }
+	100% { background-color: #450a0a; box-shadow: inset 0 0 10px rgba(239, 68, 68, 0.5); }
+}
+
+.rg-danger-row {
+	background: #450a0a !important;
+	color: #fecaca !important;
+	border-left: 4px solid #ef4444;
+	transition: background-color 0.3s ease;
+}
+
+.rg-danger-row.rg-danger-row-pulse {
+	animation: rgThreatPulse 1.8s ease-in-out;
+}
+
+.rg-threat-token {
+	background: #dc2626 !important;
+	color: #ffffff !important;
+	padding: 1px 5px !important;
+	border-radius: 4px !important;
+	font-weight: 700 !important;
+	border: 1px solid #fca5a5 !important;
+	box-shadow: 0 0 8px rgba(220, 38, 38, 0.7) !important;
+	display: inline-block;
+}
+
+.rg-danger-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 3px 9px;
+	background: #4338ca;
+	color: #e0e7ff;
+	font-size: 11px;
+	font-weight: 600;
+	border-radius: 9999px;
+	border: 1px solid #6366f1;
+	cursor: pointer;
+	text-decoration: none;
+	transition: all 0.2s ease;
+}
+
+.rg-danger-pill:hover {
+	background: #4f46e5;
+	color: #ffffff;
+	transform: translateY(-1px);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+.rg-danger-pill.active {
+	background: #ef4444;
+	color: #ffffff;
+	border-color: #f87171;
+	box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
 }
 
 /* Diff table styling */

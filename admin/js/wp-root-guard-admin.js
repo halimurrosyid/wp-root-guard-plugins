@@ -416,14 +416,22 @@
 				}
 				if (statsEl) statsEl.innerText = statsText;
 
+				WPRootGuard.currentDangerLines = [];
+				WPRootGuard.currentDangerIndex = 0;
+
 				var rowsHtml = '';
 				if (data.lines && data.lines.length) {
 					data.lines.forEach(function (item) {
 						var isDanger = item.dangers && item.dangers.length > 0;
-						var trStyle = isDanger ? 'background: #450a0a; color: #fecaca; font-weight: 600;' : 'color: #e2e8f0;';
+						if (isDanger) {
+							WPRootGuard.currentDangerLines.push(item.line_number);
+						}
+
+						var trClass = isDanger ? 'rg-danger-row' : '';
+						var trStyle = isDanger ? 'font-weight: 600;' : 'color: #e2e8f0;';
 						var lineStyle = isDanger ? 'background: #7f1d1d; color: #fca5a5;' : 'background: #1e293b; color: #64748b;';
 
-						rowsHtml += '<tr style="' + trStyle + '">';
+						rowsHtml += '<tr id="rg-line-' + item.line_number + '" class="' + trClass + '" style="' + trStyle + '">';
 						rowsHtml += '<td style="width: 50px; text-align: right; padding: 2px 10px; user-select: none; border-right: 1px solid #334155; ' + lineStyle + '">' + item.line_number + '</td>';
 						rowsHtml += '<td style="padding: 2px 12px; white-space: pre-wrap; word-break: break-all;">';
 
@@ -431,7 +439,20 @@
 							rowsHtml += '<span style="background: #dc2626; color: #ffffff; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; font-weight: bold;">⚠️ BAHAYA: ' + item.dangers.join(', ') + '</span>';
 						}
 
-						rowsHtml += WPRootGuard.escapeHtml(item.code);
+						var formattedCode = WPRootGuard.escapeHtml(item.code);
+						if (isDanger && item.matched_tokens && item.matched_tokens.length) {
+							item.matched_tokens.forEach(function (tok) {
+								var escTok = WPRootGuard.escapeHtml(tok);
+								if (escTok && escTok.length > 1) {
+									var pattern = new RegExp(WPRootGuard.escapeRegex(escTok), 'gi');
+									formattedCode = formattedCode.replace(pattern, function (matchedStr) {
+										return '<mark class="rg-threat-token">' + matchedStr + '</mark>';
+									});
+								}
+							});
+						}
+
+						rowsHtml += formattedCode;
 						rowsHtml += '</td>';
 						rowsHtml += '</tr>';
 					});
@@ -439,6 +460,33 @@
 
 				if (codeBody) codeBody.innerHTML = rowsHtml;
 				if (codeTable) codeTable.style.display = 'table';
+
+				// Perbarui bar navigasi cepat bahaya
+				var navEl = document.getElementById('rg-modal-danger-nav');
+				var pillsEl = document.getElementById('rg-modal-danger-pills');
+				var counterEl = document.getElementById('rg-modal-danger-counter');
+
+				if (navEl && pillsEl) {
+					if (WPRootGuard.currentDangerLines.length > 0) {
+						navEl.style.display = 'flex';
+						var pillsHtml = '';
+						WPRootGuard.currentDangerLines.forEach(function (lineNum, idx) {
+							var activeClass = (idx === 0) ? ' active' : '';
+							pillsHtml += '<button type="button" class="rg-danger-pill' + activeClass + '" data-line="' + lineNum + '" onclick="WPRootGuard.jumpToDangerIndex(' + idx + ')">📍 Baris ' + lineNum + '</button>';
+						});
+						pillsEl.innerHTML = pillsHtml;
+						if (counterEl) {
+							counterEl.innerText = '1 / ' + WPRootGuard.currentDangerLines.length;
+						}
+						// Otomatis gulir (auto-scroll) langsung ke baris bahaya pertama
+						setTimeout(function () {
+							WPRootGuard.jumpToDangerIndex(0);
+						}, 250);
+					} else {
+						navEl.style.display = 'none';
+						pillsEl.innerHTML = '';
+					}
+				}
 
 				if (actionsEl) {
 					var actionsHtml = '';
@@ -481,6 +529,69 @@
 		escapeHtml: function (str) {
 			if (!str) return '';
 			return $('<div/>').text(str).html();
+		},
+
+		/**
+		 * Helper untuk sanitasi string untuk digunakan dalam RegExp.
+		 *
+		 * @param {string} str String target.
+		 * @return {string} String yang telah diescape untuk regex.
+		 */
+		escapeRegex: function (str) {
+			if (!str) return '';
+			return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		},
+
+		currentDangerLines: [],
+		currentDangerIndex: 0,
+
+		/**
+		 * Melompat ke baris berbahaya berdasarkan indeks urutan.
+		 *
+		 * @param {number} index Indeks dalam array currentDangerLines.
+		 */
+		jumpToDangerIndex: function (index) {
+			if (!this.currentDangerLines || !this.currentDangerLines.length) return;
+			if (index < 0) index = this.currentDangerLines.length - 1;
+			if (index >= this.currentDangerLines.length) index = 0;
+			this.currentDangerIndex = index;
+
+			var targetLine = this.currentDangerLines[index];
+			var row = document.getElementById('rg-line-' + targetLine);
+			if (row) {
+				row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				$('.rg-danger-row').removeClass('rg-danger-row-pulse');
+				$(row).addClass('rg-danger-row-pulse');
+			}
+
+			// Perbarui tombol pill aktif
+			var pills = document.querySelectorAll('.rg-danger-pill');
+			pills.forEach(function (p, i) {
+				if (i === index) {
+					p.classList.add('active');
+				} else {
+					p.classList.remove('active');
+				}
+			});
+
+			var counterEl = document.getElementById('rg-modal-danger-counter');
+			if (counterEl) {
+				counterEl.innerText = (index + 1) + ' / ' + this.currentDangerLines.length;
+			}
+		},
+
+		/**
+		 * Melompat ke bahaya berikutnya.
+		 */
+		jumpNextDanger: function () {
+			this.jumpToDangerIndex(this.currentDangerIndex + 1);
+		},
+
+		/**
+		 * Melompat ke bahaya sebelumnya.
+		 */
+		jumpPrevDanger: function () {
+			this.jumpToDangerIndex(this.currentDangerIndex - 1);
 		},
 
 		/**
@@ -594,6 +705,10 @@
 			if (modal) modal.style.display = 'none';
 			var inspectModal = document.getElementById('rg-inspector-modal');
 			if (inspectModal) inspectModal.style.display = 'none';
+			var navEl = document.getElementById('rg-modal-danger-nav');
+			if (navEl) navEl.style.display = 'none';
+			this.currentDangerLines = [];
+			this.currentDangerIndex = 0;
 		},
 
 		/**

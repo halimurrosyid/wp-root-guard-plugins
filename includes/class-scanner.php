@@ -1186,7 +1186,7 @@ class Scanner {
 			$boundary . 'move_uploaded_file\('           => 'Backdoor File Uploader',
 			'file_put_contents\s*\([^,]+,\s*(?:base64_decode|file_get_contents|curl_exec)' => 'Remote File Dropper',
 			'(?:eval|assert)\s*\(\s*(?:file_get_contents|curl_exec)\s*\('                   => 'Remote Execution Dropper',
-			'(?:slot_gacor|judi_online|pragmatic_play|maxwin|daftar_slot|bandar_slot)' => 'Slot Injection Keyword',
+			'(?:slot[\s_-]?gacor|judi[\s_-]?online|rtp[\s_-]?slot|situs[\s_-]?slot|bandar[\s_-]?togel|pragmatic[\s_-]?play|maxwin|daftar[\s_-]?slot|bandar[\s_-]?slot|zeus[\s_-]?olympus|slot88|togel[\s_-]?online)' => 'Slot/Gambling Injection',
 		);
 	}
 
@@ -1582,38 +1582,60 @@ class Scanner {
 
 		$patterns = self::get_webshell_patterns();
 
-		$raw_lines     = explode( "\n", $content );
-		$lines         = array();
-		$total_dangers = 0;
+		// Jika berkas adalah gambar/media, tambahkan deteksi script PHP tersembunyi
+		$ext = strtolower( pathinfo( $abs_path, PATHINFO_EXTENSION ) );
+		if ( in_array( $ext, array( 'jpg', 'jpeg', 'png', 'gif', 'ico', 'webp', 'bmp', 'svg' ), true ) ) {
+			$patterns['<\?(?:php|=)'] = 'Hidden PHP Script in Media';
+		}
+
+		$raw_lines       = explode( "\n", $content );
+		$lines           = array();
+		$total_dangers   = 0;
+		$dangerous_lines = array();
 
 		foreach ( $raw_lines as $index => $line ) {
-			$line_num = $index + 1;
-			$matched  = array();
+			$line_num       = $index + 1;
+			$matched        = array();
+			$matched_tokens = array();
 
 			foreach ( $patterns as $pattern => $label ) {
-				if ( preg_match( '/' . $pattern . '/i', $line ) ) {
+				if ( preg_match_all( '/' . $pattern . '/i', $line, $matches ) ) {
 					$matched[] = $label;
+					if ( ! empty( $matches[0] ) ) {
+						foreach ( $matches[0] as $tok ) {
+							$tok = trim( $tok );
+							if ( strlen( $tok ) > 1 && ! in_array( $tok, $matched_tokens, true ) ) {
+								$matched_tokens[] = $tok;
+							}
+						}
+					}
 				}
 			}
 
 			if ( ! empty( $matched ) ) {
 				$total_dangers += count( $matched );
+				$dangerous_lines[] = array(
+					'line'    => $line_num,
+					'dangers' => array_values( array_unique( $matched ) ),
+				);
 			}
 
 			$lines[] = array(
-				'line_number' => $line_num,
-				'code'        => $line,
-				'dangers'     => array_values( array_unique( $matched ) ),
+				'line_number'    => $line_num,
+				'code'           => $line,
+				'dangers'        => array_values( array_unique( $matched ) ),
+				'matched_tokens' => $matched_tokens,
 			);
 		}
 
 		return array(
-			'success'       => true,
-			'file_name'     => $rel_path,
-			'file_path'     => $abs_path,
-			'total_lines'   => count( $lines ),
-			'total_dangers' => $total_dangers,
-			'lines'         => $lines,
+			'success'         => true,
+			'file_name'       => $rel_path,
+			'file_path'       => $abs_path,
+			'total_lines'     => count( $lines ),
+			'total_dangers'   => $total_dangers,
+			'dangerous_lines' => $dangerous_lines,
+			'lines'           => $lines,
 		);
 	}
 

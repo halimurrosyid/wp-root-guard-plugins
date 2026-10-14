@@ -2337,6 +2337,24 @@ class Admin {
 							</div>
 							<button type="button" onclick="closeCodeInspector()" style="background: transparent; border: none; color: #94a3b8; font-size: 28px; cursor: pointer; line-height: 1; padding: 0 8px;">&times;</button>
 						</div>
+						<!-- NAVIGASI CEPAT BARIS BERBAHAYA -->
+						<div id="rg-modal-danger-nav" style="display: none; background: #1e1b4b; border-bottom: 1px solid #312e81; padding: 10px 24px; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+							<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+								<span style="color: #fca5a5; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+									⚠️ <?php esc_html_e( 'Baris Terindikasi Bahaya:', 'wp-root-guard' ); ?>
+								</span>
+								<div id="rg-modal-danger-pills" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"></div>
+							</div>
+							<div style="display: flex; align-items: center; gap: 6px;">
+								<button type="button" class="button button-small" onclick="WPRootGuard.jumpPrevDanger()" style="background: #312e81; color: #e0e7ff; border-color: #4338ca;">
+									⬆️ <?php esc_html_e( 'Sebelumnya', 'wp-root-guard' ); ?>
+								</button>
+								<span id="rg-modal-danger-counter" style="color: #c7d2fe; font-size: 12px; font-weight: 600; padding: 0 4px; min-width: 50px; text-align: center;">1 / 1</span>
+								<button type="button" class="button button-small" onclick="WPRootGuard.jumpNextDanger()" style="background: #312e81; color: #e0e7ff; border-color: #4338ca;">
+									⬇️ <?php esc_html_e( 'Berikutnya', 'wp-root-guard' ); ?>
+								</button>
+							</div>
+						</div>
 						<div class="rg-modal-body" style="padding: 0; flex: 1; overflow-y: auto; background: #090d16; font-family: Consolas, Monaco, 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
 							<div id="rg-modal-loading" style="padding: 60px 20px; text-align: center; color: #94a3b8; font-size: 15px;">
 								<div style="margin-bottom: 10px;">⏳ <?php esc_html_e( 'Memuat & menganalisis kode berkas dari server...', 'wp-root-guard' ); ?> <strong id="rg-modal-loading-pct" style="color: #38bdf8;">0%</strong></div>
