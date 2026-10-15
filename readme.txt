@@ -4,7 +4,7 @@ Tags: security, slot, root, guard, slots, protection, integrity, scanner, self-h
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 8.1
-Stable tag: 3.7.4
+Stable tag: 3.7.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -42,6 +42,11 @@ Ya, fitur perbaikan mengunduh berkas core asli secara langsung dari server SVN r
 Ya, WP Root Guard secara cerdas memindai folder `wp-content/uploads/` untuk mendeteksi berkas eksekusi PHP atau webshell berbahaya, serta memindai `wp-content/themes/` dan `wp-content/plugins/` untuk mendeteksi susupan berkas tersembunyi (stealth dot-files), polyglot image backdoors, webshell, dan injeksi link slot gacor.
 
 == Changelog ==
+
+= 3.7.5 =
+* Eliminasi False Positive Jetpack & UpdraftPlus: Menambahkan lexer komentar PHP cerdas (`strip_php_comments()`) yang membersihkan komentar kode (single-line, multi-line, PHPDoc) sebelum mengevaluasi pola eksekusi dinamis. Mencegah format markdown backtick di dalam dokumentasi PHPDoc (seperti `$_SERVER['HTTP_ACCEPT']` pada Jetpack) disalahartikan sebagai operator backtick RCE shell execution.
+* Penyempurnaan Heuristik Remote File Dropper: Pola deteksi kini secara ketat dan presisi menargetkan penyimpanan berkas dari superglobal langsung (`$_POST`/`$_GET`/`$_REQUEST`) atau URL unduhan eksternal (`http://`), sehingga penulisan berkas backup potongan dan pembuatan laporan PDF sah pada plugin UpdraftPlus tidak lagi memicu peringatan palsu.
+* Peningkatan Akurasi Inspektur Kode (Secure Code Inspector): Tampilan inspeksi kode baris-per-baris kini secara cerdas mengabaikan penandaan fungsi eksekusi standar jika berada di dalam baris komentar dokumentasi.
 
 = 3.7.4 =
 * Interval Pemindaian Bawaan 3 Jam (Default 3-Hour Background Scan): Menambahkan interval pemindaian latar belakang "Setiap 3 Jam" (every_3_hours / 10.800 detik) ke dalam WP-Cron dan menjadikannya sebagai frekuensi bawaan (default & recommended) untuk keseimbangan proteksi server yang optimal.

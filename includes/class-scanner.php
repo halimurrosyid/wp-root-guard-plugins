@@ -1146,6 +1146,43 @@ class Scanner {
 	}
 
 	/**
+	 * Menghapus komentar PHP (single-line, multi-line, docblocks) agar tidak memicu false positive pada heuristik.
+	 *
+	 * @param string $content Kode sumber PHP.
+	 * @return string Kode PHP bersih tanpa komentar.
+	 */
+	public static function strip_php_comments( $content ) {
+		if ( empty( $content ) ) {
+			return '';
+		}
+
+		if ( function_exists( 'token_get_all' ) ) {
+			$tokens = @token_get_all( $content );
+			if ( is_array( $tokens ) ) {
+				$output = '';
+				foreach ( $tokens as $token ) {
+					if ( is_array( $token ) ) {
+						if ( T_COMMENT === $token[0] || T_DOC_COMMENT === $token[0] ) {
+							continue;
+						}
+						$output .= $token[1];
+					} else {
+						$output .= $token;
+					}
+				}
+				return $output;
+			}
+		}
+
+		// Fallback regex jika token_get_all tidak tersedia
+		$clean = preg_replace( '/\/\*.*?\*\//s', '', $content );
+		$clean = preg_replace( '/\/\/.*$/m', '', $clean );
+		$clean = preg_replace( '/#.*$/m', '', $clean );
+
+		return $clean;
+	}
+
+	/**
 	 * Mendapatkan daftar pola (signature) webshell dan fungsi berbahaya dengan regex word boundary.
 	 *
 	 * @return array Array pola regex => label nama bahaya.
@@ -1184,7 +1221,7 @@ class Scanner {
 			$boundary . 'anonymousfox'                   => 'AnonymousFox Backdoor',
 			$boundary . 'hex2bin\('                      => 'hex2bin() Obfuscation',
 			$boundary . 'move_uploaded_file\('           => 'Backdoor File Uploader',
-			'file_put_contents\s*\([^,]+,\s*(?:base64_decode|file_get_contents|curl_exec)' => 'Remote File Dropper',
+			'(?:file_put_contents|fwrite)\s*\([^,]+,\s*(?:base64_decode\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)|file_get_contents\s*\(\s*[\'"]https?:\/\/|\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\[)' => 'Remote File Dropper',
 			'(?:eval|assert)\s*\(\s*(?:file_get_contents|curl_exec)\s*\('                   => 'Remote Execution Dropper',
 			'(?:slot[\s_-]?gacor|judi[\s_-]?online|rtp[\s_-]?slot|situs[\s_-]?slot|bandar[\s_-]?togel|pragmatic[\s_-]?play|maxwin|daftar[\s_-]?slot|bandar[\s_-]?slot|zeus[\s_-]?olympus|slot88|togel[\s_-]?online)' => 'Slot/Gambling Injection',
 		);
@@ -1220,11 +1257,21 @@ class Scanner {
 			return false;
 		}
 
+		$clean_code          = self::strip_php_comments( $content );
 		$suspicious_patterns = self::get_webshell_patterns();
+
+		$named_webshell_labels = array(
+			'C99 Webshell', 'R57 Webshell', 'b374k Webshell', 'WSO Webshell',
+			'Marvins Webshell', 'ALFA Webshell', 'FilesMan Backdoor',
+			'IndoXploit Webshell', 'Weevely Webshell', 'p0wny-shell', 'AnonymousFox Backdoor'
+		);
 
 		$found = array();
 		foreach ( $suspicious_patterns as $pattern => $label ) {
-			if ( preg_match( '/' . $pattern . '/i', $content ) ) {
+			// Pola nama brand malware dicek pada seluruh isi berkas (termasuk header komentar)
+			// Pola fungsi eksekusi (eval, assert, backtick, dropper) HANYA dicek pada kode bersih tanpa komentar
+			$target_text = in_array( $label, $named_webshell_labels, true ) ? $content : $clean_code;
+			if ( preg_match( '/' . $pattern . '/i', $target_text ) ) {
 				$found[] = $label;
 			}
 		}
@@ -1497,33 +1544,43 @@ class Scanner {
 			return $slot_check;
 		}
 
-		// 4. Deteksi Tanda Tangan Webshell Spesifik & Arbitrary RCE Execution
-		$strict_threats = array(
-			'/c99shell/i'                           => 'C99 Webshell',
-			'/r57shell/i'                           => 'R57 Webshell',
-			'/b374k/i'                              => 'b374k Webshell',
-			'/wso_version/i'                        => 'WSO Webshell',
-			'/marvins/i'                            => 'Marvins Webshell',
-			'/alfa_data/i'                          => 'ALFA Webshell',
-			'/FilesMan/i'                           => 'FilesMan Backdoor',
-			'/indoxploit/i'                         => 'IndoXploit Webshell',
-			'/weevely/i'                            => 'Weevely Webshell',
-			'/p0wny-shell/i'                        => 'p0wny-shell Backdoor',
-			'/anonymousfox/i'                       => 'AnonymousFox Tool/Backdoor',
+		// 4. Deteksi Tanda Tangan Webshell Spesifik (bisa di string/komentar)
+		$named_threats = array(
+			'/c99shell/i'     => 'C99 Webshell',
+			'/r57shell/i'     => 'R57 Webshell',
+			'/b374k/i'        => 'b374k Webshell',
+			'/wso_version/i'  => 'WSO Webshell',
+			'/marvins/i'      => 'Marvins Webshell',
+			'/alfa_data/i'    => 'ALFA Webshell',
+			'/FilesMan/i'     => 'FilesMan Backdoor',
+			'/indoxploit/i'   => 'IndoXploit Webshell',
+			'/weevely/i'      => 'Weevely Webshell',
+			'/p0wny-shell/i'  => 'p0wny-shell Backdoor',
+			'/anonymousfox/i' => 'AnonymousFox Tool/Backdoor',
+		);
+		foreach ( $named_threats as $pattern => $label ) {
+			if ( preg_match( $pattern, $content ) ) {
+				return $label;
+			}
+		}
+
+		// 5. Deteksi Arbitrary RCE Execution & Dropper (HANYA pada kode PHP aktif, tanpa komentar)
+		$clean_code = self::strip_php_comments( $content );
+		$rce_threats = array(
 			'/(?:eval|assert)\s*\(\s*(?:base64_decode|gzinflate|gzuncompress|gzdecode|str_rot13|hex2bin)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)/i' => 'Obfuscated RCE Webshell ($_POST/$_GET/$_SERVER)',
 			'/(?:eval|assert)\s*\(\s*(?:base64_decode|gzinflate|str_rot13)\s*\(\s*[\'"][a-zA-Z0-9+\/=\s]{50,}[\'"]\s*\)/i' => 'Obfuscated Payload Dropper (eval/base64)',
 			'/(?:eval|assert)\s*\(\s*(?:file_get_contents|curl_exec)\s*\(/i' => 'Remote Payload Exec (eval file_get_contents/curl)',
 			'/(?:eval|assert)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\s*\[/i' => 'Direct RCE ($_POST/$_GET/$_SERVER eval)',
 			'/(?:system|shell_exec|passthru|exec)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\s*\[/i' => 'Arbitrary Command Execution ($_POST/$_GET/$_SERVER)',
-			'/`\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\[/i' => 'Direct Backtick RCE Execution',
+			'/(?:^|[^a-zA-Z0-9_\$])`\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\s*\[[^`]+`/i' => 'Direct Backtick RCE Execution',
 			'/(?:call_user_func|call_user_func_array)\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)/i' => 'Dynamic Callback RCE (call_user_func $_POST/$_SERVER)',
 			'/preg_replace\s*\(\s*[\'"]\/.*\/e[\'"]\s*,\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)/i' => 'Preg_replace /e Code Injection',
 			'/\$_(?:POST|GET|REQUEST|SERVER)\s*\[\s*[\'"][^\'"]+[\'"]\s*\]\s*\(\s*\$_(?:POST|GET|REQUEST|SERVER)/i' => 'Variable Function RCE Backdoor',
-			'/file_put_contents\s*\([^,]+,\s*(?:base64_decode|file_get_contents|curl_exec)\s*\(/i' => 'Remote File Dropper',
+			'/(?:file_put_contents|fwrite)\s*\([^,]+,\s*(?:base64_decode\s*\(\s*\$_(?:POST|GET|REQUEST|COOKIE|SERVER)|file_get_contents\s*\(\s*[\'"]https?:\/\/|\$_(?:POST|GET|REQUEST|COOKIE|SERVER)\[)/i' => 'Remote File Dropper',
 		);
 
-		foreach ( $strict_threats as $pattern => $label ) {
-			if ( preg_match( $pattern, $content ) ) {
+		foreach ( $rce_threats as $pattern => $label ) {
+			if ( preg_match( $pattern, $clean_code ) ) {
 				return $label;
 			}
 		}
@@ -1602,12 +1659,32 @@ class Scanner {
 		$total_dangers   = 0;
 		$dangerous_lines = array();
 
+		$named_webshell_labels = array(
+			'C99 Webshell', 'R57 Webshell', 'b374k Webshell', 'WSO Webshell',
+			'Marvins Webshell', 'ALFA Webshell', 'FilesMan Backdoor',
+			'IndoXploit Webshell', 'Weevely Webshell', 'p0wny-shell', 'AnonymousFox Backdoor',
+			'Slot/Gambling Injection', 'Hidden PHP Script in Media'
+		);
+
+		$in_block_comment = false;
 		foreach ( $raw_lines as $index => $line ) {
 			$line_num       = $index + 1;
 			$matched        = array();
 			$matched_tokens = array();
+			$trimmed_line   = trim( $line );
+
+			$is_single_comment = 0 === strpos( $trimmed_line, '//' ) || 0 === strpos( $trimmed_line, '#' );
+			if ( false !== strpos( $line, '/*' ) ) {
+				$in_block_comment = true;
+			}
+			$is_comment = $is_single_comment || $in_block_comment || 0 === strpos( $trimmed_line, '*' );
 
 			foreach ( $patterns as $pattern => $label ) {
+				// Abaikan deteksi fungsi eksekusi standar jika berada di dalam baris komentar
+				if ( $is_comment && ! in_array( $label, $named_webshell_labels, true ) ) {
+					continue;
+				}
+
 				if ( preg_match_all( '/' . $pattern . '/i', $line, $matches ) ) {
 					$matched[] = $label;
 					if ( ! empty( $matches[0] ) ) {
@@ -1619,6 +1696,10 @@ class Scanner {
 						}
 					}
 				}
+			}
+
+			if ( false !== strpos( $line, '*/' ) ) {
+				$in_block_comment = false;
 			}
 
 			if ( ! empty( $matched ) ) {

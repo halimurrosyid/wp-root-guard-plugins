@@ -20,6 +20,11 @@
 
 ## Log Pembaruan (Changelog)
 
+### v3.7.5 (15 Oktober 2026)
+- **Eliminasi False Positive Jetpack & UpdraftPlus**: Menambahkan lexer komentar PHP cerdas (`strip_php_comments()`) yang membersihkan komentar kode (single-line, multi-line, PHPDoc) sebelum mengevaluasi pola eksekusi dinamis. Mencegah format markdown backtick di dalam dokumentasi PHPDoc (seperti `$_SERVER['HTTP_ACCEPT']` pada Jetpack) disalahartikan sebagai operator backtick RCE shell execution.
+- **Penyempurnaan Heuristik Remote File Dropper**: Pola deteksi kini secara ketat dan presisi menargetkan penyimpanan berkas dari superglobal langsung (`$_POST`/`$_GET`/`$_REQUEST`) atau URL unduhan eksternal (`http://`), sehingga penulisan berkas backup potongan dan pembuatan laporan PDF sah pada plugin UpdraftPlus tidak lagi memicu peringatan palsu.
+- **Peningkatan Akurasi Inspektur Kode (Secure Code Inspector)**: Tampilan inspeksi kode baris-per-baris kini secara cerdas mengabaikan penandaan fungsi eksekusi standar jika berada di dalam baris komentar dokumentasi.
+
 ### v3.7.4 (14 Oktober 2026)
 - **Interval Pemindaian Bawaan 3 Jam (Default 3-Hour Background Scan)**: Menambahkan interval pemindaian latar belakang "Setiap 3 Jam" (`every_3_hours` / 10.800 detik) ke dalam scheduler WP-Cron dan menjadikannya sebagai frekuensi default & direkomendasikan untuk stabilitas dan proteksi optimal server.
 - **Penyelarasan Pengaturan Scheduler**: Memperbarui dropdown pengaturan frekuensi pemindaian dengan opsi `Setiap 3 Jam (Default / Direkomendasikan)` serta label `Setiap 1 Jam`.
