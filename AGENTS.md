@@ -30,3 +30,8 @@ Use short imperative subjects with optional conventional prefixes, for example `
 ## Security and Configuration
 
 Never include Telegram tokens, passwords, production URLs, database dumps, or private credentials. Treat baseline, whitelist, quarantine, updater, and server-rule changes as security-sensitive. Do not claim protection is verified unless the relevant filesystem, web-server, and scheduler checks have actually passed.
+
+## AI Context & Handover
+
+For detailed cross-device architecture notes, scanner heuristic rules, lessons learned from false positives (Jetpack, UpdraftPlus, SVG), and the step-by-step release checklist, always consult [`AI_CONTEXT.md`](AI_CONTEXT.md).
+
